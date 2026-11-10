@@ -1,0 +1,163 @@
+MongoDB Server URI: mongodb://127.0.0.1:54869/
+Base de datos: foodstore_nosql | Colección: pedidos
+
+[-] Ejecutando insertMany() con 6 pedidos...
+[+] Documentos insertados con éxito: 6
+
+=====================================================================
+CONSULTA 4.a: Todos los pedidos con identificador y estado
+db.pedidos.find({}, { _id: 1, estado: 1 })
+=====================================================================
+[
+  {
+    "_id": 2,
+    "estado": "ENTREGADO"
+  },
+  {
+    "_id": 3,
+    "estado": "PENDIENTE"
+  },
+  {
+    "_id": 4,
+    "estado": "ENTREGADO"
+  },
+  {
+    "_id": 5,
+    "estado": "CANCELADO"
+  },
+  {
+    "_id": 6,
+    "estado": "PENDIENTE"
+  },
+  {
+    "_id": 7,
+    "estado": "ENTREGADO"
+  }
+]
+
+=====================================================================
+CONSULTA 4.b: Filtrar pedidos por estado = 'ENTREGADO'
+db.pedidos.find({ estado: 'ENTREGADO' }, { _id: 1, fecha: 1, estado: 1, 'cliente.nombre': 1, total: 1 })
+=====================================================================
+[
+  {
+    "_id": 2,
+    "fecha": "2025-10-30T18:44:05.346Z",
+    "estado": "ENTREGADO",
+    "cliente": {
+      "nombre": "Juan"
+    },
+    "total": 1700
+  },
+  {
+    "_id": 4,
+    "fecha": "2025-10-17T17:02:22.346Z",
+    "estado": "ENTREGADO",
+    "cliente": {
+      "nombre": "Cliente masivo 3"
+    },
+    "total": 2050
+  },
+  {
+    "_id": 7,
+    "fecha": "2026-03-22T21:38:34.346Z",
+    "estado": "ENTREGADO",
+    "cliente": {
+      "nombre": "Cliente masivo 6"
+    },
+    "total": 500
+  }
+]
+Cantidad recuperada: 3 pedidos (IDs: 2, 4, 7)
+
+=====================================================================
+CONSULTA 4.c: Buscar pedidos con id_producto = 3 dentro del arreglo de líneas
+db.pedidos.find({ 'lineas.id_producto': 3 })
+=====================================================================
+[
+  {
+    "_id": 2,
+    "estado": "ENTREGADO",
+    "cliente": {
+      "nombre": "Juan"
+    },
+    "total": 1700,
+    "lineas": [
+      {
+        "id_producto": 3,
+        "nombre": "Producto masivo 3",
+        "categoria": "Pizzas",
+        "cantidad": 1,
+        "precio_unitario": 500,
+        "subtotal": 500
+      }
+    ]
+  },
+  {
+    "_id": 4,
+    "estado": "ENTREGADO",
+    "cliente": {
+      "nombre": "Cliente masivo 3"
+    },
+    "total": 2050,
+    "lineas": [
+      {
+        "id_producto": 3,
+        "nombre": "Producto masivo 3",
+        "categoria": "Pizzas",
+        "cantidad": 1,
+        "precio_unitario": 550,
+        "subtotal": 550
+      }
+    ]
+  },
+  {
+    "_id": 6,
+    "estado": "PENDIENTE",
+    "cliente": {
+      "nombre": "Cliente masivo 5"
+    },
+    "total": 3500,
+    "lineas": [
+      {
+        "id_producto": 3,
+        "nombre": "Producto masivo 3",
+        "categoria": "Pizzas",
+        "cantidad": 2,
+        "precio_unitario": 500,
+        "subtotal": 1000
+      }
+    ]
+  }
+]
+Cantidad recuperada: 3 pedidos (IDs: 2, 4, 6)
+
+=====================================================================
+CONSULTA 4.d: Pedidos con total > $2000.00 (Justificado: Segmento Mayorista)
+db.pedidos.find({ total: { $gt: 2000.00 } }, { _id: 1, 'cliente.nombre': 1, estado: 1, total: 1 })
+=====================================================================
+[
+  {
+    "_id": 4,
+    "estado": "ENTREGADO",
+    "cliente": {
+      "nombre": "Cliente masivo 3"
+    },
+    "total": 2050
+  },
+  {
+    "_id": 6,
+    "estado": "PENDIENTE",
+    "cliente": {
+      "nombre": "Cliente masivo 5"
+    },
+    "total": 3500
+  }
+]
+Cantidad recuperada: 2 pedidos (IDs: 4, 6)
+
+=====================================================================
+RESUMEN DE VERIFICACIÓN (CONSIGNA 5)
+=====================================================================
+Filtro Estado ENTREGADO    : Cantidad = 3 | IDs = [2, 4, 7]
+Filtro Producto con ID 3   : Cantidad = 3 | IDs = [2, 4, 6]
