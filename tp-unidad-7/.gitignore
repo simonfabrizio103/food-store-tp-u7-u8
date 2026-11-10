@@ -1,0 +1,15 @@
+# Node y dependencias
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Sistema operativo e IDEs
+Thumbs.db
+[Dd]esktop.ini
+.DS_Store
+.idea/
+.vscode/
