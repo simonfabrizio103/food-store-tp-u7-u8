@@ -1,0 +1,102 @@
+EJECUCIÓN DEL SIMULADOR OFFLINE Y SEMÁFORO - FOOD STORE UNIDAD 8
+Fecha de ejecución: 2026-11-10
+
+================================================================================
+[PASO 1] INICIALIZANDO BASE LOCAL SQLITE (schema_sqlite.sql)
+================================================================================
+Tablas en modo STRICT creadas exitosamente con foreign_keys activadas.
+
+[PASO 2] IMPORTANDO INSTANTÁNEA DEL SERVIDOR (servidor_snapshot.csv)...
+-> Snapshot cargado en SQLite: 50002 registros.
+-> Catálogo producto_cache sincronizado: 50002 registros.
+
+--------------------------------------------------------------------------------
+CASO C1: CONSULTA DE CATÁLOGO DISPONIBLE SIN CONECTARSE AL SERVIDOR
+--------------------------------------------------------------------------------
+Resultado de consulta local en tablet (muestra representativa):
+  ID: 1 | Muzza                | $  100.00 | Stock:    5 | Disp: 1 | Elim: 0
+  ID: 2 | Napolitana           | $  120.00 | Stock:   10 | Disp: 1 | Elim: 0
+  ID: 3 | Producto masivo 3    | $ 2418.00 | Stock:  115 | Disp: 1 | Elim: 0
+  ID: 4 | Producto masivo 4    | $ 4138.00 | Stock:  130 | Disp: 1 | Elim: 0
+  ID: 5 | Producto masivo 5    | $ 2317.00 | Stock:   95 | Disp: 1 | Elim: 0
+-> Explicación: La tablet opera en modo 100% desconectado consultando SQLite local sin invocar a PostgreSQL.
+
+--------------------------------------------------------------------------------
+CASO C7: INTEGRIDAD REFERENCIAL Y RESTRICCIONES (CANTIDAD 0 Y PRODUCTO INEXISTENTE)
+--------------------------------------------------------------------------------
+-> CHECK cantidad > 0 comprobado exitosamente: CHECK constraint failed: cantidad > 0
+-> FOREIGN KEY (producto_id) comprobada exitosamente: FOREIGN KEY constraint failed
+-> Verificación de integridad: 0 ítems espurios guardados en la tabla.
+
+--------------------------------------------------------------------------------
+CASO C2: SUBIDA DE PRECIO EN SERVIDOR (CONFLICTO) Y ACEPTACIÓN DEL CLIENTE
+--------------------------------------------------------------------------------
+1. Borrador creado en tablet con Producto 1 a $100.00 (10000 centavos).
+2. Simulación de subida de precio en servidor: Muzza sube a $125.00 (12500 centavos).
+
+[SEMÁFORO] Evaluando solicitudes con estado PENDIENTE...
+3. Resultado del semáforo: Estado = [CONFLICTO] | Motivo = CONFLICTO: el precio del servidor cambió respecto al visto en la tablet
+4. El cliente acepta el nuevo precio: se actualiza el borrador local y se emite nueva solicitud.
+
+[SEMÁFORO] Evaluando solicitudes con estado PENDIENTE...
+5. Resultado del semáforo: Estado = [SIMULADO_APROBADO] | Motivo = SIMULADO_APROBADO: validación exitosa (precio, stock y vigencia verificados)
+
+--------------------------------------------------------------------------------
+CASO C3: SOLICITUD DE CANTIDAD SUPERIOR AL STOCK REMANENTE (RECHAZADO)
+--------------------------------------------------------------------------------
+Borrador creado solicitando 50 unidades de Napolitana (stock disponible en servidor: 10).
+
+[SEMÁFORO] Evaluando solicitudes con estado PENDIENTE...
+Resultado del semáforo: Estado = [RECHAZADO] | Motivo = RECHAZADO: stock insuficiente en el servidor para cubrir la cantidad
+
+--------------------------------------------------------------------------------
+CASO C4: PRODUCTO DADO DE BAJA LÓGICA / LÁPIDA (RECHAZADO Y OCULTAMIENTO EN CATÁLOGO)
+--------------------------------------------------------------------------------
+1. Borrador creado con Producto 3.
+2. Servidor aplica baja lógica sobre Producto 3 (eliminado = 't').
+
+[SEMÁFORO] Evaluando solicitudes con estado PENDIENTE...
+3. Resultado del semáforo: Estado = [RECHAZADO] | Motivo = RECHAZADO: producto dado de baja lógica (lápida activa) en el servidor
+4. Recarga del catálogo en la tablet (se actualiza producto_cache con el nuevo snapshot):
+-> Verificación de lápida: Fila persiste en producto_cache = 1 | Visible en catálogo de venta = 0
+
+--------------------------------------------------------------------------------
+CASO C5: BORRADOR SIN CAMBIOS (SIMULADO_APROBADO)
+--------------------------------------------------------------------------------
+Borrador creado con Producto 4 (2 unidades a $4138.00). Coincide exactamente con el servidor.
+
+[SEMÁFORO] Evaluando solicitudes con estado PENDIENTE...
+Resultado del semáforo: Estado = [SIMULADO_APROBADO] | Motivo = SIMULADO_APROBADO: validación exitosa (precio, stock y vigencia verificados)
+
+--------------------------------------------------------------------------------
+CASO C6: REENVÍO DE LA MISMA SOLICITUD / IDEMPOTENCIA (MISMO UUID)
+--------------------------------------------------------------------------------
+Intentando reenviar solicitud con UUID idéntico (s0000005-0000-0000-0000-000000000001)...
+-> Protección de unicidad en tablet: Rechazado por PRIMARY KEY (UNIQUE constraint failed: cola_sync.solicitud_uuid)
+Ejecutando semáforo nuevamente para comprobar invariabilidad...
+
+[SEMÁFORO] Evaluando solicitudes con estado PENDIENTE...
+-> Estado tras reintento: [SIMULADO_APROBADO] (Omitido de reevaluación por no estar PENDIENTE).
+-> Protección en un sistema real (Parada 8): La deduplicación se implementa en la API del servidor mediante una tabla de claves de idempotencia (idempotency_keys) con restricción UNIQUE sobre el token transmitido en el encabezado HTTP.
+
+================================================================================
+[AUDITORÍA POSTGRESQL] VERIFICACIÓN DE INVARIABILIDAD EN SERVIDOR CENTRAL
+================================================================================
+Salida de PostgreSQL tras todas las simulaciones de la tablet:
+ total_pedidos_pg 
+------------------
+           200001
+(1 fila)
+
+ id_producto |      nombre       | stock | precio_lista 
+-------------+-------------------+-------+--------------
+           1 | Muzza             |     5 |       100.00
+           2 | Napolitana        |    10 |       120.00
+           3 | Producto masivo 3 |   115 |      2418.00
+           4 | Producto masivo 4 |   130 |      4138.00
+(4 filas)
+
+
+-> CONCLUSIÓN FUNDAMENTAL: Ni los pedidos aumentaron ni el stock disminuyó en PostgreSQL.
+   Se cumple estrictamente la regla de oro: 'El móvil propone, el servidor dispone'.
+   SIMULADO_APROBADO no es una venta.
