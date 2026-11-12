@@ -7,7 +7,7 @@ COMPILADOR DE INFORME TÉCNICO EN PDF - TPI SEGUNDA ENTREGA (UNIDADES 4 A 8)
 Estudiante: Fabrizio Simon
 Asignatura: Base de Datos II · Tecnicatura Universitaria en Programación
 Institución: UTN - Facultad Regional Mendoza
-Salida: INFORME_SEGUNDA_ENTREGA_TPI.pdf
+Salida: INFORME_SEGUNDA_ENTREGA_TPI.pdf (Versión Exhaustiva y Detallada)
 ============================================================================
 """
 
@@ -39,7 +39,7 @@ class NumberedCanvas(canvas.Canvas):
 
     def draw_page_decorations(self, page_count):
         self.saveState()
-        # Encabezado institucional sutil
+        # Encabezado superior institucional
         self.setFont("Helvetica-Bold", 7.5)
         self.setFillColor(colors.HexColor("#334155"))
         self.drawString(36, 762, "UTN FRM · TECNICATURA UNIVERSITARIA EN PROGRAMACIÓN | BASE DE DATOS II")
@@ -49,7 +49,7 @@ class NumberedCanvas(canvas.Canvas):
         self.setLineWidth(0.6)
         self.line(36, 756, 612 - 36, 756)
 
-        # Pie de página
+        # Pie de página inferior
         self.line(36, 32, 612 - 36, 32)
         self.setFont("Helvetica", 8)
         self.setFillColor(colors.HexColor("#475569"))
@@ -62,13 +62,14 @@ def generar_pdf():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     pdf_path = os.path.join(script_dir, "INFORME_SEGUNDA_ENTREGA_TPI.pdf")
 
+    # Margen estándar de 36 pt (0.5 pulgada)
     doc = SimpleDocTemplate(
         pdf_path,
         pagesize=letter,
         leftMargin=36,
         rightMargin=36,
-        topMargin=38,
-        bottomMargin=36
+        topMargin=40,
+        bottomMargin=38
     )
 
     styles = getSampleStyleSheet()
@@ -105,8 +106,20 @@ def generar_pdf():
         fontSize=9.5,
         leading=12,
         textColor=primary_color,
-        spaceBefore=5,
+        spaceBefore=6,
         spaceAfter=3,
+        keepWithNext=True
+    )
+
+    h2_style = ParagraphStyle(
+        'SectionHeading2',
+        parent=styles['Normal'],
+        fontName='Helvetica-Bold',
+        fontSize=8.2,
+        leading=10.5,
+        textColor=secondary_color,
+        spaceBefore=4,
+        spaceAfter=2,
         keepWithNext=True
     )
 
@@ -115,16 +128,16 @@ def generar_pdf():
         parent=styles['Normal'],
         fontName='Helvetica',
         fontSize=7.6,
-        leading=9.8,
+        leading=10,
         textColor=dark_text,
-        spaceAfter=3
+        spaceAfter=3.5
     )
 
     callout_style = ParagraphStyle(
         'CalloutText',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=7.4,
+        fontSize=7.3,
         leading=9.5,
         textColor=colors.HexColor("#1E3A8A")
     )
@@ -144,7 +157,7 @@ def generar_pdf():
         parent=styles['Normal'],
         fontName='Helvetica',
         fontSize=6.8,
-        leading=8.5,
+        leading=8.6,
         textColor=dark_text
     )
 
@@ -153,7 +166,7 @@ def generar_pdf():
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
         fontSize=6.8,
-        leading=8.5,
+        leading=8.6,
         textColor=primary_color
     )
 
@@ -168,9 +181,7 @@ def generar_pdf():
 
     story = []
 
-    # =========================================================================
-    # PÁGINA 1: TÍTULO, REPOSITORIOS, INTRODUCCIÓN, SECCIÓN 1 Y SECCIÓN 2
-    # =========================================================================
+    # ENCABEZADO Y TÍTULO
     story.append(Paragraph("Trabajo Práctico Integrador — Segunda Entrega (Unidades 4 a 8)", title_style))
     story.append(Paragraph(
         "<b>Food Store:</b> Cierre Integral de la Capa de Datos (PostgreSQL 18 · MongoDB · SQLite 3.50+)<br/>"
@@ -179,14 +190,14 @@ def generar_pdf():
     ))
     story.append(HRFlowable(width="100%", thickness=1.5, color=primary_color, spaceBefore=0, spaceAfter=4))
 
-    # Repositorios
+    # REPOSITORIOS
     repo_box = [[
         Paragraph(
             "<b>Repositorios Oficiales en GitHub:</b><br/>"
             "• <b>Parte 1 (Unidades 1 a 6):</b> <code>https://github.com/simonfabrizio103/food-store-tp</code> "
-            "(Carpetas <code>facultad/food-store-tp-unidad4/</code>, <code>u5/</code>, <code>u6/</code> en rama <code>master</code>, commit <code>202aecb</code>).<br/>"
+            "(Carpetas <code>facultad/food-store-tp-unidad4/</code>, <code>u5/</code>, <code>u6/</code> en rama <code>master</code>, commit final <code>202aecb</code>).<br/>"
             "• <b>Parte 2 (Unidades 7 y 8):</b> <code>https://github.com/simonfabrizio103/food-store-tp-u7-u8</code> "
-            "(Carpetas <code>tp-unidad-7/</code> y <code>tp-unidad-8/</code> en rama <code>main</code>, etiqueta oficial <b><code>tp8</code></b>).",
+            "(Carpetas <code>tp-unidad-7/</code> y <code>tp-unidad-8/</code> en rama <code>main</code>, etiquetas oficiales <b><code>tp8</code></b> y <b><code>tpi-entrega2</code></b>).",
             callout_style
         )
     ]]
@@ -200,48 +211,75 @@ def generar_pdf():
     story.append(t_repo)
     story.append(Spacer(1, 3))
 
-    # Introducción
+    # INTRODUCCIÓN
     story.append(Paragraph(
-        "<b>Introducción y Enfoque Personal:</b> Para esta segunda entrega del TPI integré las unidades 4 a 8 cubriendo desde la refactorización avanzada "
-        "en PostgreSQL hasta la arquitectura políglota con MongoDB y la base embebida Offline-First en SQLite para las tablets del Food Truck. "
+        "<b>Introducción y Enfoque Personal:</b> Cuando encaré esta segunda entrega del TPI de Food Store, mi objetivo fue consolidar y cerrar toda la capa "
+        "de datos del proyecto, abarcando desde la normalización avanzada en PostgreSQL hasta la integración con MongoDB y SQLite en las tablets de los Food Trucks. "
         "En cada etapa trabajé sobre copias de prueba (<code>food_store_copia</code>, <code>foodstore_restore_test</code>), medí tiempos reales con EXPLAIN "
         "y cronómetros de PowerShell, y mantuve una auditoría técnica estricta sobre las sugerencias de la IA, descartando propuestas inviables para producción.",
         body_style
     ))
     story.append(Spacer(1, 2))
 
-    # Sección 1
+    # =========================================================================
+    # SECCIÓN 1: QUÉ IMPLEMENTÉ EN CADA UNIDAD (4 A 8)
+    # =========================================================================
     story.append(Paragraph("1. Qué elementos implementé en cada unidad (4 a 8)", h1_style))
+    story.append(Paragraph(
+        "A continuación detallo el trabajo realizado en cada una de las unidades que componen esta segunda entrega, organizadas según su ubicación en los dos repositorios de GitHub:",
+        body_style
+    ))
+
     data_u_impl = [
-        [Paragraph("Unidad / Eje Temático", table_header_style), Paragraph("Componentes y Scripts Implementados", table_header_style), Paragraph("Descripción Funcional y Arquitectónica", table_header_style)],
+        [Paragraph("Unidad / Eje Temático", table_header_style), Paragraph("Componentes y Scripts Implementados", table_header_style), Paragraph("Descripción Funcional y Arquitectónica Detallada", table_header_style)],
         [
             Paragraph("<b>Unidad 4</b><br/>Normalización avanzada y redundancia", table_cell_bold),
             Paragraph("• <code>tp_fnbc_control_lote.sql</code><br/>• <code>tp_desnormalizacion_top_categorias.sql</code><br/>• Vista de compatibilidad y triggers", code_style),
-            Paragraph("Descompuse <code>control_lote_almacen</code> a FNBC eliminando la dependencia <code>ResponsableControlID &rarr; DepositoID</code> sin pérdida de datos. Creé la tabla agregada <code>categoria_venta_dia</code> (top 5 categorías diarias) con triggers de sincronización y auditoría periódica.", table_cell_style)
+            Paragraph(
+                "<b>Refactorización FNBC:</b> Detecté que <code>control_lote_almacen</code> violaba FNBC por la dependencia funcional <code>ResponsableControlID &rarr; DepositoID</code> (el determinante no era superclave). La descompuse sin pérdida en <code>responsable_control</code> y <code>control_lote_almacen_nuevo</code>, creando una vista de compatibilidad para código heredado.<br/>"
+                "<b>Desnormalización controlada:</b> Creé la tabla agregada <code>categoria_venta_dia</code> (top 5 categorías diarias) para acelerar el dashboard, sincronizada con triggers y auditoría periódica.",
+                table_cell_style
+            )
         ],
         [
             Paragraph("<b>Unidad 5</b><br/>Administración y seguridad", table_cell_bold),
-            Paragraph("• <code>sql/roles.sql</code> (RBAC)<br/>• <code>sql/auditoria_test.sql</code><br/>• <code>sql/simulacro_incidente.sql</code><br/>• <code>sql/usuario_anon.sql</code>", code_style),
-            Paragraph("Diseñé el esquema RBAC de mínimo privilegio con roles de grupo y login, permisos a nivel de columna sobre <code>usuario.email</code> y default privileges. Activé auditoría nativa (<code>log_connections</code>, <code>log_disconnections</code>, <code>log_statement = all</code>), ejecuté simulacro forense y apliqué pseudonimización determinista con sal.", table_cell_style)
+            Paragraph("• <code>sql/roles.sql</code> (RBAC)<br/>• <code>sql/auditoria_test.sql</code><br/>• <code>sql/simulacro_incidente.sql</code><br/>• <code>sql/anonimizar_log.py</code><br/>• <code>sql/usuario_anon.sql</code>", code_style),
+            Paragraph(
+                "<b>RBAC y Mínimo Privilegio:</b> Diseñé roles de grupo (<code>rol_admin_datos</code>, <code>rol_app_web</code>, <code>rol_cajero</code>, <code>rol_auditor</code>) y cuentas de login. Apliqué permisos a nivel de columna (<code>app_web</code> no ve emails ni contraseñas) y <code>ALTER DEFAULT PRIVILEGES</code>.<br/>"
+                "<b>Auditoría y PII:</b> Activé auditoría nativa (<code>log_connections</code>, <code>log_disconnections</code>, <code>log_statement = all</code>), ejecuté simulacro forense con parser anonimizador en Python, y creé <code>usuario_anon</code> con hash determinista con sal.",
+                table_cell_style
+            )
         ],
         [
             Paragraph("<b>Unidad 6</b><br/>Mantenimiento de bases de datos", table_cell_bold),
             Paragraph("• <code>maintenance.sql</code><br/>• <code>backup_foodstore.ps1</code><br/>• <code>restore_test.ps1</code><br/>• <code>validate_restore.sql</code>", code_style),
-            Paragraph("Formulé el plan de mantenimiento preventivo (<code>VACUUM ANALYZE</code>, <code>REINDEX CONCURRENTLY</code>, estadísticas). Automaticé backups diarios lógicos comprimidos con rotación de 7 días. Ejecuté simulacro de recuperación contra reloj en base efímera y validé integridad.", table_cell_style)
+            Paragraph(
+                "<b>Mantenimiento preventivo:</b> Implementé <code>VACUUM (ANALYZE, VERBOSE)</code> concurrente, <code>REINDEX CONCURRENTLY</code> para desfragmentar índices y actualización de estadísticas.<br/>"
+                "<b>Backups y contingencia:</b> Programé en PowerShell backups lógicos con <code>pg_dump -Fc</code> y rotación de 7 días. Ejecuté simulacro de recuperación contra reloj en base efímera y validé integridad estructural.",
+                table_cell_style
+            )
         ],
         [
             Paragraph("<b>Unidad 7</b><br/>NoSQL (MongoDB) y políglota", table_cell_bold),
             Paragraph("• <code>consultas_mongodb.js</code><br/>• <code>consultas_postgresql.sql</code><br/>• <code>ejecutar_mongodb.js</code><br/>• <code>SPEC_U7.md</code> / <code>BITACORA.md</code>", code_style),
-            Paragraph("Modelé la colección <code>pedidos</code> embebiendo líneas con precio unitario congelado e instantánea del cliente. Desarrollé 4 consultas analíticas en MongoDB y en PostgreSQL con 100% de coincidencia exacta, fundamentando la arquitectura híbrida CQRS.", table_cell_style)
+            Paragraph(
+                "<b>Modelado documental:</b> Diseñé la colección <code>pedidos</code> embebiendo las líneas con precio unitario congelado e instantánea del cliente.<br/>"
+                "<b>Verificación cruzada:</b> Escribí 4 consultas analíticas en MongoDB y en PostgreSQL con runner autónomo en memoria, logrando 100% de coincidencia exacta y fundamentando la arquitectura híbrida CQRS.",
+                table_cell_style
+            )
         ],
         [
             Paragraph("<b>Unidad 8</b><br/>Bases de datos móviles e integración", table_cell_bold),
             Paragraph("• <code>schema_sqlite.sql</code> (STRICT)<br/>• <code>semaforo.sql</code> / <code>simulador.py</code><br/>• <code>pruebas_sqlite.sql</code><br/>• <code>servidor_snapshot.csv</code>", code_style),
-            Paragraph("Implementé la base SQLite para la tablet del Food Truck en modo Offline-First con tablas <code>STRICT</code>, precios en centavos enteros y UUIDs v4. Creé el algoritmo de semáforo de conciliación (Rojo/Amarillo/Verde), simulé casos C1 a C7 y comprobé la regla de oro en PostgreSQL.", table_cell_style)
+            Paragraph(
+                "<b>Offline-First en SQLite:</b> Creé la base para la tablet con tablas <code>STRICT</code>, precios en centavos enteros y UUIDs v4.<br/>"
+                "<b>Sincronización con semáforo:</b> Algoritmo jerárquico (Rojo/Amarillo/Verde) evaluando solicitudes contra el snapshot del servidor. Simulé casos C1 a C7 y comprobé la regla de oro: el móvil propone, el servidor dispone.",
+                table_cell_style
+            )
         ]
     ]
 
-    t_u_impl = Table(data_u_impl, colWidths=[105, 145, 290])
+    t_u_impl = Table(data_u_impl, colWidths=[105, 140, 295])
     t_u_impl.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), primary_color),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
@@ -251,36 +289,59 @@ def generar_pdf():
         ('BOTTOMPADDING', (0, 0), (-1, -1), 1.8),
     ]))
     story.append(t_u_impl)
-    story.append(Spacer(1, 3))
+    story.append(Spacer(1, 4))
 
-    # Sección 2
+    # =========================================================================
+    # SECCIÓN 2: CÓMO PROBÉ EL FUNCIONAMIENTO
+    # =========================================================================
     story.append(Paragraph("2. Cómo probé el funcionamiento", h1_style))
+    story.append(Paragraph(
+        "Para no romper nada y asegurarme de que el código realmente anduviera en condiciones reales de carga y concurrencia, apliqué un conjunto integral de técnicas de prueba:",
+        body_style
+    ))
+
     data_pruebas = [
-        [Paragraph("Técnica de Prueba", table_header_style), Paragraph("Unidad / Escenario Real Probado", table_header_style), Paragraph("Metodología y Comprobación en el Motor", table_header_style)],
+        [Paragraph("Metodología de Prueba", table_header_style), Paragraph("Unidad / Escenario Real Probado", table_header_style), Paragraph("Detalle de Ejecución y Comprobación en el Motor", table_header_style)],
         [
             Paragraph("<b>Transacciones reversibles</b><br/>(BEGIN / ROLLBACK)", table_cell_bold),
-            Paragraph("Unidad 4 (Migración FNBC)<br/>Unidad 8 (Borradores móviles)", table_cell_style),
-            Paragraph("En U4 ejecuté la desestructuración de lotes dentro de bloques de transacción para validar que no hubiera tuplas huérfanas antes de confirmar. En U8 probé la anulación limpia de un pedido en mostrador con <code>ROLLBACK</code>, comprobando mediante <code>COUNT(*) = 0</code> que no quedó basura.", table_cell_style)
+            Paragraph("Unidad 4 (Migración FNBC)<br/>Unidad 8 (Borradores en tablet)", table_cell_style),
+            Paragraph(
+                "• En U4 ejecuté la migración de lotes dentro de transacciones; verifiqué con <code>COUNT(*) = 6</code> que no hubiera tuplas huérfanas antes de confirmar.<br/>"
+                "• En U8 probé la anulación limpia de un pedido en mostrador con <code>ROLLBACK</code>, comprobando mediante <code>COUNT(*) = 0</code> que la tablet no conservó registros huérfanos.",
+                table_cell_style
+            )
         ],
         [
-            Paragraph("<b>Copias y bases réplica de prueba</b>", table_cell_bold),
+            Paragraph("<b>Bases réplica y aislamiento</b>", table_cell_bold),
             Paragraph("Unidades 4, 5 y 6<br/><code>food_store_copia</code> y <code>restore_test</code>", table_cell_style),
-            Paragraph("Toda modificación de esquema y simulacro destructivo se realizó sobre bases aisladas con datos sintéticos volumétricos (200,001 pedidos y 50,000 productos), resguardando los ambientes de desarrollo limpios y la base productiva.", table_cell_style)
+            Paragraph(
+                "Toda modificación de esquema y prueba destructiva se realizó sobre réplicas aisladas con datos sintéticos volumétricos (200,001 pedidos y 50,000 productos), resguardando los ambientes limpios y la base productiva.",
+                table_cell_style
+            )
         ],
         [
             Paragraph("<b>Simulacro de acceso indebido</b>", table_cell_bold),
             Paragraph("Unidad 5 (Seguridad)<br/>Rol atacante: <code>app_web</code>", table_cell_style),
-            Paragraph("Ejecuté <code>simulacro_incidente.sql</code> forzando ataques desde <code>app_web</code>: lectura masiva, intento de cambio a <code>admin_datos</code>, creación de usuarios espurios y llamadas a <code>fn_autenticar</code>. Verifiqué los bloqueos en el log y el informe forense.", table_cell_style)
+            Paragraph(
+                "Ejecuté <code>simulacro_incidente.sql</code> forzando ataques desde <code>app_web</code>: 4 llamadas erróneas a <code>fn_autenticar</code>, intento de leer emails de <code>usuario</code>, cambio de rol a <code>admin_datos</code> y creación de roles espurios. Verifiqué los bloqueos en el log y el reporte forense.",
+                table_cell_style
+            )
         ],
         [
             Paragraph("<b>Simulacro de desastre contra reloj</b>", table_cell_bold),
             Paragraph("Unidad 6 (Continuidad)<br/>Script: <code>restore_test.ps1</code>", table_cell_style),
-            Paragraph("Automaticé la restauración cronometrada desde el último backup comprimido hacia <code>foodstore_restore_test</code>. Validé la integridad estructural con <code>validate_restore.sql</code> chequeando claves foráneas, índices y cantidad de registros.", table_cell_style)
+            Paragraph(
+                "Automaticé la restauración cronometrada desde el backup comprimido hacia <code>foodstore_restore_test</code> usando <code>Stopwatch</code>. Validé la consistencia con <code>validate_restore.sql</code> chequeando tablas, índices y claves foráneas.",
+                table_cell_style
+            )
         ],
         [
-            Paragraph("<b>Casos de conflicto de sincronización</b>", table_cell_bold),
-            Paragraph("Unidad 8 (Móvil)<br/>Semáforo de conciliación (C1 a C7)", table_cell_style),
-            Paragraph("Probé metódicamente los casos de la feria: consulta offline (C1), subida de precio y aceptación (C2 &rarr; Conflicto &rarr; Aprobado), quiebre de stock (C3 &rarr; Rechazo), baja lógica/lápida (C4 &rarr; Rechazo y ocultamiento de catálogo), idempotencia (C6) y restricciones estrictas (C7).", table_cell_style)
+            Paragraph("<b>Casos de conflicto del semáforo</b>", table_cell_bold),
+            Paragraph("Unidad 8 (Móvil)<br/>Runner: <code>simulador.py</code> (C1 a C7)", table_cell_style),
+            Paragraph(
+                "Probé metódicamente los casos de la feria: consulta offline (C1), subida de precio y aceptación (C2 &rarr; Conflicto &rarr; Aprobado), quiebre de stock (C3 &rarr; Rechazo), baja lógica/lápida (C4 &rarr; Rechazo y ocultamiento en catálogo), idempotencia (C6) y restricciones estrictas (C7).",
+                table_cell_style
+            )
         ]
     ]
 
@@ -294,12 +355,10 @@ def generar_pdf():
         ('BOTTOMPADDING', (0, 0), (-1, -1), 1.8),
     ]))
     story.append(t_pruebas)
-
-    # SALTO A PÁGINA 2
-    story.append(PageBreak())
+    story.append(Spacer(1, 4))
 
     # =========================================================================
-    # PÁGINA 2: SECCIÓN 3 (RESULTADOS) Y SECCIÓN 4 (DECISIONES DE DISEÑO)
+    # SECCIÓN 3: QUÉ RESULTADOS OBTUVE
     # =========================================================================
     story.append(Paragraph("3. Qué resultados obtuve", h1_style))
     story.append(Paragraph(
@@ -308,7 +367,7 @@ def generar_pdf():
     ))
 
     data_resultados = [
-        [Paragraph("Métrica / Escenario Evaluado", table_header_style), Paragraph("Resultado Numérico y Comportamiento Observado", table_header_style), Paragraph("Evidencia e Impacto en el Proyecto", table_header_style)],
+        [Paragraph("Métrica / Escenario Evaluado", table_header_style), Paragraph("Resultado Numérico y Comportamiento Medido", table_header_style), Paragraph("Evidencia e Impacto en el Proyecto", table_header_style)],
         [
             Paragraph("<b>Rendimiento Desnormalización (U4)</b>", table_cell_bold),
             Paragraph("Consulta original: <b>0.123 ms</b> (Seq Scan)<br/>Con tabla desnormalizada: <b>0.077 ms</b> (Bitmap Heap Scan)", table_cell_style),
@@ -317,7 +376,7 @@ def generar_pdf():
         [
             Paragraph("<b>Hallazgo Crítico Forense H-1 (U5)</b>", table_cell_bold),
             Paragraph("Fallo de autenticación por <code>SECURITY INVOKER</code>.<br/>Remediación: cambio a <code>SECURITY DEFINER</code>.", table_cell_style),
-            Paragraph("<code>app_web</code> no podía validar login al carecer de SELECT sobre <code>usuario</code>. Se securizó la función bajo el owner <code>admin_datos</code> con <code>search_path</code> fijo.", table_cell_style)
+            Paragraph("<code>app_web</code> no podía validar login al carecer de SELECT sobre <code>usuario</code>. Se securizó la función bajo el owner <code>admin_datos</code> con <code>search_path = public, pg_temp</code>.", table_cell_style)
         ],
         [
             Paragraph("<b>Simulacro de Desastre: RTO (U6)</b>", table_cell_bold),
@@ -347,13 +406,15 @@ def generar_pdf():
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('GRID', (0, 0), (-1, -1), 0.5, border_color),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1.8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.8),
     ]))
     story.append(t_resultados)
-    story.append(Spacer(1, 5))
+    story.append(Spacer(1, 4))
 
-    # Sección 4
+    # =========================================================================
+    # SECCIÓN 4: QUÉ DECISIONES DE DISEÑO TOMÉ
+    # =========================================================================
     story.append(Paragraph("4. Qué decisiones de diseño tomé", h1_style))
     story.append(Paragraph(
         "A lo largo del proyecto prioricé soluciones de ingeniería que balancean consistencia, seguridad, rendimiento y desacoplamiento:",
@@ -395,17 +456,16 @@ def generar_pdf():
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('GRID', (0, 0), (-1, -1), 0.5, border_color),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1.8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.8),
     ]))
     story.append(t_decisiones)
+    story.append(Spacer(1, 4))
 
-    # SALTO A PÁGINA 3
+    # =========================================================================
+    # SECCIÓN 5: HERRAMIENTAS DE IA, BITÁCORA Y DESCARTES FUNDAMENTALES
+    # =========================================================================
     story.append(PageBreak())
-
-    # =========================================================================
-    # PÁGINA 3: SECCIÓN 5 (HERRAMIENTAS DE IA Y DESCARTES), DUIA Y CONCLUSIÓN
-    # =========================================================================
     story.append(Paragraph("5. Herramientas de IA utilizadas, bitácora y descartes fundamentales", h1_style))
     story.append(Paragraph(
         "Utilicé Kiro para el diseño formal de requisitos EARS y especificaciones técnicas, y asistentes de código (OpenCode y LLMs) para prototipado rápido. "
@@ -458,8 +518,8 @@ def generar_pdf():
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('GRID', (0, 0), (-1, -1), 0.5, border_color),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-        ('TOPPADDING', (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('TOPPADDING', (0, 0), (-1, -1), 1.8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1.8),
     ]))
     story.append(t_ia)
     story.append(Spacer(1, 4))
@@ -474,7 +534,7 @@ def generar_pdf():
     story.append(Spacer(1, 4))
 
     # Conclusión final
-    story.append(Paragraph("Conclusión Final", h1_style))
+    story.append(Paragraph("6. Conclusión Final y Aprendizajes del Proyecto", h1_style))
     story.append(Paragraph(
         "Esta segunda entrega me demostró la importancia de concebir la base de datos como una arquitectura integral y especializada. "
         "Aprendí que optimizar no es agregar índices sin medir sino estudiar el plan del optimizador; que la seguridad radica en el mínimo privilegio real "
