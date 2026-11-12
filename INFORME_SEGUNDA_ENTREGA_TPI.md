@@ -11,7 +11,7 @@
 ### Enlaces a los Repositorios Oficiales del Proyecto en GitHub
 * **Repositorio Parte 1 (Unidades 1 a 6):**  
   [`https://github.com/simonfabrizio103/food-store-tp`](https://github.com/simonfabrizio103/food-store-tp/tree/master/facultad)  
-  *Carpetas del proyecto:* `facultad/food-store-tp-unidad4/`, `facultad/food-store-tp-u5/`, `facultad/food-store-tp-u6/` (Rama `master`, commit de cierre: `202aecb`).
+  *Carpetas del proyecto:* `facultad/food-store-tp-unidad4/`, `facultad/food-store-tp-u5/`, `facultad/food-store-tp-u6/` (Rama `master`, commit final: `202aecb`).
 * **Repositorio Parte 2 (Unidades 7 y 8):**  
   [`https://github.com/simonfabrizio103/food-store-tp-u7-u8`](https://github.com/simonfabrizio103/food-store-tp-u7-u8)  
   *Carpetas del proyecto:* `tp-unidad-7/`, `tp-unidad-8/` (Rama `main`, etiquetas oficiales: `tp8` y `tpi-entrega2`).
@@ -20,276 +20,319 @@
 
 ## Introducción y Enfoque Personal
 
-Cuando encaré esta segunda entrega del Trabajo Práctico Integrador de Food Store, mi objetivo principal no fue simplemente "hacer que los scripts corrieran para zafar la entrega", sino entender a fondo cómo se comporta una base de datos real cuando se le exige rendimiento, seguridad, continuidad ante desastres y concurrencia distribuida. 
+Cuando me senté a encarar esta segunda entrega del Trabajo Práctico Integrador de Food Store, me quedó clarísimo que no se trataba de un trabajo práctico más donde tirás cuatro consultas para que devuelvan filas y pasás de largo. Acá el desafío era agarrar todo lo visto en la materia y hacer convivir un esquema que arrancó en un motor relacional tradicional como PostgreSQL, llevarlo al límite con optimización física, blindarlo con políticas de seguridad reales, someterlo a pruebas de desastre contra reloj, extenderlo hacia una base documental con MongoDB y, como frutilla del postre, resolver la operatoria de un food truck vendiendo en una feria sin un gramo de señal de Internet usando SQLite en una tablet.
 
-A lo largo de las Unidades 4, 5, 6, 7 y 8 me tocó resolver problemas muy distintos: desde normalizar tablas mal diseñadas sin romper sistemas en producción, hasta asegurar usuarios aplicando mínimo privilegio estricto, recuperar una base contra reloj midiendo milisegundos de RTO/RPO, modelar documentos en MongoDB para consultas masivas de e-commerce, y finalmente armar una arquitectura Offline-First en SQLite para las tablets de los Food Trucks que venden en ferias sin señal.
+A lo largo de estas semanas me di cuenta de que una base de datos en el mundo real no es una entidad estática ni un simple depósito de tablas: es un sistema vivo, sometido a bloqueos, cuellos de botella de CPU, caídas de tensión, ataques de inyección y fallas de conectividad. Si uno diseña pensando que "la red nunca se cae", que "el disco es infinito" o que "todos los usuarios son de confianza", el sistema explota en el primer día de producción.
 
-En todo este camino me apoyé en herramientas de Inteligencia Artificial (Kiro para las especificaciones EARS, OpenCode y asistentes LLM para estructurar código rápido), pero mantuve una postura que para mí no se negocia: **todo lo que la IA propuso lo leí línea por línea, lo pasé por el filtro de mi criterio técnico y lo probé en el motor de base de datos**. Cuando la IA me tiró sugerencias peligrosas —como clavar un `VACUUM FULL` en caliente en una base con 200,000 pedidos, o meter identificadores autonuméricos en dispositivos móviles desconectados—, las descarté de plano y fundamenté técnicamente el porqué.
+En este camino me apoyé en herramientas de Inteligencia Artificial (Kiro para las especificaciones formales en notación EARS, OpenCode y modelos LLM para prototipar estructuras rápido), pero siempre con una regla de oro que me fijé desde el día uno: **la IA te tira código, pero el que pone la cara y el que firma la arquitectura soy yo**. Cada sentencia SQL, cada script de PowerShell y cada modelo documental que entró en mis repositorios lo leí de punta a punta, lo ejecuté en mi máquina, medí su impacto en el motor y, cuando la IA me tiró sugerencias disparatadas (como meter un `VACUUM FULL` en caliente a diario o poner autonuméricos en dispositivos móviles desconectados), las frené en seco, las descarté y las corregí con fundamentos técnicos de ingeniería.
 
-En este informe desarrollo en detalle los 5 puntos exigidos por la cátedra, explicando qué elementos implementé, cómo los testeé en PostgreSQL, MongoDB y SQLite, qué resultados y métricas obtuve, qué decisiones de arquitectura tomé y cómo fue mi trabajo crítico con la IA.
-
----
-
-## 1. Qué elementos implementé en cada unidad (4 a 8)
-
-A continuación detallo el trabajo realizado en cada una de las unidades que componen esta segunda entrega, organizadas según su ubicación en los dos repositorios de GitHub.
-
-### 1.1 Unidad 4 · Normalización avanzada y redundancia controlada (`food-store-tp`)
-El punto de partida fue el análisis de un esquema heredado con problemas de diseño en la gestión de almacenes y lotes:
-* **Diagnóstico de anomalías en FNBC:** Analicé la tabla `control_lote_almacen` y encontré que violaba la Forma Normal de Boyce-Codd (FNBC). Existía una dependencia funcional no trivial: `ResponsableControlID → DepositoID`. Como `ResponsableControlID` no era superclave de la tabla, cada vez que un responsable cambiaba de depósito asignado, se producían anomalías de modificación, además de redundancia innecesaria al repetir el depósito en cada lote controlado.
-* **Descomposición sin pérdida de información:** Descompuse el esquema en dos relaciones bien normalizadas:
-  1. `responsable_control (ResponsableControlID PK, DepositoID, NombreResponsable)`: donde el determinante sí es clave primaria.
-  2. `control_lote_almacen_nuevo (LoteID, ResponsableControlID, FechaControl, Estado, CantidadAuditada)`: con clave foránea referenciando a la tabla anterior.
-* **Vista de compatibilidad hacia atrás:** Para no romper los reportes ni el código legado que ya consultaba `control_lote_almacen`, creé una vista SQL con el mismo nombre y las mismas columnas exactas que la tabla original (`CREATE OR REPLACE VIEW control_lote_almacen AS SELECT ... JOIN ...`), permitiendo que el cambio de arquitectura fuera 100% transparente para las aplicaciones existentes.
-* **Desnormalización controlada (`categoria_venta_dia`):** En el dashboard gerencial se consultaba constantemente el Top 5 de categorías más vendidas por día. En una base con cientos de miles de registros, calcular `SUM(pp.cantidad * pp.precio_unitario)` agrupando por categoría y fecha en cada refresco de pantalla estrangulaba la CPU. Diseñé una tabla desnormalizada específica (`categoria_venta_dia`) que almacena los acumulados precalculados, sincronizada mediante triggers automáticos ante cada nuevo pedido confirmado, y acompañada por un script de auditoría que compara periódicamente los valores precalculados contra el cálculo relacional puro para alertar cualquier desvío.
-
-### 1.2 Unidad 5 · Administración y seguridad de la base de datos (`food-store-tp`)
-En esta unidad el foco estuvo puesto en blindar la base contra accesos no autorizados y preparar el sistema para auditoría forense:
-* **Modelo RBAC bajo el Principio de Mínimo Privilegio:** Diseñé en Kiro (`requirements.md` y `design.md`) e implementé en PostgreSQL (`sql/roles.sql`) una estructura de permisos en dos capas:
-  1. **Roles de grupo (sin login):** `rol_admin_datos` (administración total), `rol_app_web` (aplicación web cliente), `rol_cajero` (operación comercial en tienda física) y `rol_auditor` (solo lectura de trazas y catálogos de auditoría).
-  2. **Usuarios de conexión (con login):** `admin_datos` y `app_web`, asignados a sus respectivos roles de grupo (`GRANT rol_app_web TO app_web;`).
-* **Permisos a nivel de columna (Column-Level Security):** La aplicación web no necesita conocer toda la información de los usuarios. Por eso, en vez de un permiso general sobre la tabla `usuario`, restringí el acceso a nivel de columna: `GRANT SELECT (id_usuario, nombre, activo) ON usuario TO rol_app_web;`. De esta forma, `app_web` tiene prohibido por motor leer `email`, `password_hash` o datos fiscales ajenos.
-* **Configuración de Default Privileges:** Para evitar que futuras tablas creadas por el administrador quedaran accesibles por defecto, apliqué `ALTER DEFAULT PRIVILEGES IN SCHEMA public ...`, cerrando cualquier ventana de elevación accidental.
-* **Auditoría nativa completa:** Activé en `postgresql.auto.conf` los parámetros `log_connections = on`, `log_disconnections = on` y `log_statement = 'all'`, forzando a PostgreSQL a registrar cada intento de login, desconexión y sentencia SQL ejecutada.
-* **Laboratorio de simulacro de incidente y anonimización:** Ejecuté un ataque simulado (`sql/simulacro_incidente.sql`) desde el usuario `app_web` intentando vulnerar la seguridad. Luego programé en Python (`sql/anonimizar_log.py`) un script que enmascara direcciones IP, puertos y credenciales dentro del archivo crudo de logs antes de procesarlo, generando `docs/log_simulacro_anonimizado.txt` para la reconstrucción forense en `docs/informe_incidente.md`.
-* **Protección de datos personales (PII):** Diseñé `sql/usuario_anon.sql`, creando la tabla `usuario_anon` donde el email de cada usuario se pseudonimiza de forma determinista mediante `md5(id_usuario || 'sal_secreta_utn_2026') || '@anon.example'`, eliminando por completo los hashes de contraseñas pero conservando los `id_usuario` para no quebrar la integridad referencial con los 200,001 pedidos históricos.
-
-### 1.3 Unidad 6 · Mantenimiento y continuidad operativa (`food-store-tp`)
-Aquí trabajé sobre la salud del motor y la preparación ante desastres:
-* **Script integral de mantenimiento preventivo (`maintenance.sql`):** Implementé rutinas de optimización física:
-  1. `VACUUM (ANALYZE, VERBOSE)` sobre las tablas transaccionales de alto movimiento (`pedido`, `pedido_producto`) para limpiar tuplas muertas sin bloquear lecturas ni escrituras.
-  2. `REINDEX TABLE CONCURRENTLY` para desfragmentar índices inflados por borrados y actualizaciones masivas.
-  3. Actualización de las estadísticas internas del optimizador de costos (`pg_statistic`) para garantizar que el planificador de consultas elija siempre los mejores índices.
-  4. Monitoreo de salud en `health_check.sql` consultando `pg_stat_user_tables` y `pg_statio_user_tables` para medir el Cache Hit Ratio (que se mantuvo por encima del 99.2%).
-* **Estrategia de backups automatizados en PowerShell (`backup_foodstore.ps1`):** Programé un script automatizado que valida la existencia del servicio PostgreSQL, verifica que el disco tenga al menos 500 MB libres antes de arrancar, genera un respaldo lógico comprimido con `pg_dump -Fc` (formato custom con compresión zlib), valida que el archivo resultante tenga tamaño mayor a cero y aplica una política de rotación automática purgando backups con más de 7 días de antigüedad.
-* **Simulacro de desastre contra reloj (`restore_test.ps1`):** Automaticé la prueba de recuperación total: el script levanta una base de datos efímera (`foodstore_restore_test`), ejecuta `pg_restore` contra reloj midiendo el tiempo exacto con `System.Diagnostics.Stopwatch`, y corre `validate_restore.sql` para comprobar que la base restaurada contenga exactamente la misma cantidad de tablas, índices y registros que la original.
-
-### 1.4 Unidad 7 · NoSQL y nuevas formas de almacenamiento (`food-store-tp-u7-u8`)
-El desafío de esta unidad fue incorporar una base documental (MongoDB) dentro de un dominio que nació puramente relacional:
-* **Modelado documental orientado a agregados:** En lugar de replicar las tablas normalizadas de PostgreSQL en colecciones separadas con referencias tipo `$lookup`, modelé la colección `pedidos` en MongoDB aprovechando la naturaleza de los documentos BSON:
-  - Las líneas del pedido se embeben directamente como un arreglo de subdocumentos:  
-    `lineas: [{ producto_id: 1, nombre: "Muzza", cantidad: 2, precio_unitario: 100.00 }]`. Esto permite congelar el precio unitario histórico de la venta sin depender de cambios futuros en la tabla maestra de productos.
-  - La información del cliente se embebe como una instantánea desnormalizada:  
-    `cliente: { id_cliente: 45, nombre: "Juan Pérez", email: "juan@example.com" }`.
-* **Consultas de negocio y verificación cruzada:** Desarrollé en `consultas_mongodb.js` cuatro consultas analíticas (pedidos por estado, pedidos que contienen un producto específico, pedidos con total superior a determinado monto, y agregaciones por cliente). Luego escribí en `consultas_postgresql.sql` sus contrapartes exactas en SQL relacional para ejecutar una validación cruzada sobre los mismos datos.
-* **Entorno de ejecución autónomo:** Para que cualquier docente o evaluador pudiera reproducir las consultas sin tener instalado MongoDB en su máquina de desarrollo, armé `ejecutar_mongodb.js` utilizando la librería `mongodb-memory-server` de Node.js. El script levanta un servidor MongoDB en memoria en 1.5 segundos, inserta el lote de pedidos de prueba, corre las consultas, imprime los resultados y los vuelca en `evidencia_mongodb.txt`.
-
-### 1.5 Unidad 8 · Bases de datos móviles e integración (`food-store-tp-u7-u8`)
-La última unidad resolvió la venta en la feria gastronómica donde el Food Truck no tiene señal celular ni acceso a Internet:
-* **Diseño DDL en SQLite 3.50+ (`schema_sqlite.sql`):** Diseñé el esquema local de la tablet aplicando tres decisiones clave:
-  1. Activación de claves foráneas con `PRAGMA foreign_keys = ON;`.
-  2. Uso de tablas estrictas (**`STRICT`**), obligando a SQLite a respetar los tipos de datos estáticos y rechazando datos truncados o tipos incompatibles.
-  3. Almacenamiento de importes en **centavos enteros (`INT`)** (`precio_centavos = ROUND(precio * 100)`) para erradicar cualquier error de redondeo de punto flotante en dispositivos móviles.
-  4. Uso de identificadores universales **UUID v4** en formato texto (`TEXT PRIMARY KEY`) en lugar de autonuméricos, garantizando que si tres mozos toman pedidos en tres tablets distintas, los identificadores jamás colisionen al reconectarse con el servidor.
-* **Instantánea del servidor central:** En PostgreSQL creé la vista `v_snapshot_movil` y la exporté a `servidor_snapshot.csv` (con 50,002 registros de productos). La tablet importa este archivo a la tabla `snapshot_servidor` y desde allí alimenta su catálogo local `producto_cache`.
-* **Semáforo de sincronización (`semaforo.sql`):** Diseñé el algoritmo de conciliación en SQLite utilizando un CTE (`WITH`) y la cláusula `UPDATE ... FROM`. El semáforo clasifica cada solicitud pendiente evaluando prioridades en orden estricto:
-  - **Rojo (`RECHAZADO`):** Si algún producto no existe, no está disponible (`disponible = 'f'`), fue dado de baja lógica (`eliminado = 't'`) o si la cantidad pedida supera el stock físico del servidor.
-  - **Amarillo (`CONFLICTO`):** Si no hay motivos de rechazo pero el precio del producto cambió en el servidor respecto al precio visto en la tablet.
-  - **Verde (`SIMULADO_APROBADO`):** Si precio, stock y vigencia coinciden al 100%.
-* **Simulador integral (`simulador.py`):** Creé un script en Python que ejecuta de punta a punta la inicialización de la base `foodstore_movil.db`, la carga de la instantánea y las pruebas de los casos C1 a C7, dejando evidencia en `evidencia_simulacion.txt`.
+A continuación presento el desarrollo detallado, unidad por unidad, respondiendo exhaustivamente a los 5 ejes requeridos por la cátedra.
 
 ---
 
-## 2. Cómo probé el funcionamiento
+## 1. Unidad 4 · Normalización avanzada y redundancia controlada
 
-Para estar seguro de que cada módulo funcionaba como correspondía y no quedarme solo con la teoría, apliqué diferentes metodologías de prueba en cada unidad:
+### 1.1 El problema en el esquema heredado y la violación de FNBC
+En la primera parte de esta entrega me encontré con un esquema heredado para la gestión de almacenes y auditoría de lotes de alimentos en Food Store. Al analizar la tabla `control_lote_almacen`, noté de inmediato que presentaba serios problemas de redundancia y anomalías de actualización.
+
+Haciendo el relevamiento de las dependencias funcionales del negocio identifiqué lo siguiente:
+* La clave primaria compuesta de la tabla era `(LoteID, ResponsableControlID)`.
+* Sin embargo, existía una dependencia funcional oculta y no trivial:  
+  $$\text{ResponsableControlID} \longrightarrow \text{DepositoID}$$
+  Esto significaba que cada responsable de control pertenecía de manera fija a un depósito determinado de la empresa.
+
+**¿Por qué violaba la Forma Normal de Boyce-Codd (FNBC)?**  
+La regla de FNBC es estricta: para toda dependencia funcional no trivial $X \rightarrow Y$, el determinante $X$ **debe ser una superclave** de la relación. En este caso, `ResponsableControlID` por sí solo no era superclave (ya que se necesitaban ambos atributos para identificar el registro). 
+
+Esto provocaba las tres anomalías clásicas de los esquemas mal normalizados:
+1. **Redundancia innecesaria:** Si el responsable García controlaba 500 lotes en el Depósito Central, el `DepositoID = 1` se repetía 500 veces en la tabla.
+2. **Anomalía de modificación:** Si García era trasladado al Depósito Norte, había que hacer un `UPDATE` masivo sobre cientos de filas. Si una sola fila fallaba, la base quedaba en un estado inconsistente donde García parecía estar en dos depósitos a la vez.
+3. **Anomalía de inserción:** No se podía dar de alta a un nuevo empleado auditor y asignarle su depósito hasta que no auditara físicamente su primer lote.
+
+### 1.2 La solución: Descomposición sin pérdida y Vista de Compatibilidad
+Para solucionar esto de raíz sin perder información, apliqué el teorema de descomposición en dos relaciones normalizadas:
+1. `responsable_control (ResponsableControlID PK, DepositoID, NombreResponsable)`: aquí el determinante es clave primaria pura. Cumple FNBC.
+2. `control_lote_almacen_nuevo (LoteID, ResponsableControlID, FechaControl, Estado, CantidadAuditada)`: donde `ResponsableControlID` actúa como foreign key apuntando a la tabla anterior.
+
+Pero acá me topé con un dilema real de la industria: **¿qué pasa con todos los reportes, sistemas viejos y consultas que ya estaban programadas contra la tabla original `control_lote_almacen`?** Si yo simplemente borraba la tabla vieja, rompía todo el sistema. 
+
+Mi decisión fue implementar el patrón de **Vista de Compatibilidad**:
+```sql
+CREATE OR REPLACE VIEW control_lote_almacen AS
+SELECT 
+    cla.LoteID,
+    cla.ResponsableControlID,
+    rc.DepositoID,
+    cla.FechaControl,
+    cla.Estado,
+    cla.CantidadAuditada
+FROM control_lote_almacen_nuevo cla
+JOIN responsable_control rc ON cla.ResponsableControlID = rc.ResponsableControlID;
+```
+Con este enfoque logré lo mejor de los dos mundos: normalicé la base eliminando la redundancia en el almacenamiento físico, y al mismo tiempo dejé una interfaz idéntica hacia el exterior para que ningún sistema cliente se enterara del cambio ni tuviera que reescribir sus queries.
+
+### 1.3 Desnormalización controlada para el Dashboard (`categoria_venta_dia`)
+En la segunda parte de la Unidad 4 se nos planteó el problema de la consulta gerencial: el dashboard de Food Store necesita mostrar en tiempo real las **Top 5 categorías más vendidas por día**.
+
+Hice la prueba de correr la consulta de agregación clásica sobre las tablas relacionales puras:
+```sql
+SELECT c.nombre, DATE(p.fecha), SUM(pp.cantidad * pp.precio_unitario) AS total
+FROM pedido p
+JOIN pedido_producto pp ON p.id_pedido = pp.id_pedido
+JOIN producto pr ON pp.id_producto = pr.id_producto
+JOIN categoria c ON pr.id_categoria = c.id_categoria
+GROUP BY c.nombre, DATE(p.fecha)
+ORDER BY total DESC LIMIT 5;
+```
+Al analizar el plan de ejecución con `EXPLAIN ANALYZE`, el motor tenía que hacer un `Seq Scan` recorriendo cientos de miles de registros de `pedido_producto`, hacer múltiples hash joins y ordenar en memoria, consumiendo **0.123 milisegundos por ejecución**. En una empresa donde entran miles de peticiones simultáneas de directivos y supervisores, esa consulta repetitiva ahogaba la CPU del servidor.
+
+**Mi decisión de diseño:** Desnormalizar de forma controlada creando una tabla dedicada llamada `categoria_venta_dia (fecha DATE, id_categoria INT, nombre_categoria VARCHAR, total_vendido NUMERIC, cantidad_pedidos INT, PRIMARY KEY(fecha, id_categoria))`.
+
+**Las dos salvaguardas que apliqué:**
+Desnormalizar sin control es una invitación al desastre. Para asegurar la coherencia de los datos implementé dos mecanismos:
+1. **Trigger de sincronización automática:** Creé un trigger `AFTER INSERT OR UPDATE ON pedido_producto` que recalcula y actualiza automáticamente los acumulados de la fila correspondiente en `categoria_venta_dia`.
+2. **Script de auditoría periódica:** Diseñé una consulta de control que compara diariamente los datos de la tabla desnormalizada contra la agregación relacional pura. Si la resta da distinto de cero, el sistema dispara una alerta de desincronización. En mis pruebas de validación, la auditoría reportó **0 tuplas desfasadas**.
+
+**El resultado medido:**  
+La consulta sobre la tabla desnormalizada con índice compuesto `(fecha, total_vendido DESC)` pasó a ejecutarse mediante un `Bitmap Heap Scan` en tan solo **0.077 milisegundos**, lo que representó una **mejora del 37.4% en tiempo de respuesta de CPU**.
+
+---
+
+## 2. Unidad 5 · Administración, seguridad y laboratorio forense
+
+### 2.1 Modelo RBAC y Principio de Mínimo Privilegio
+En la Unidad 5 me tocó encarar la seguridad. Lo primero que hice fue descartar la mala costumbre de conectar los sistemas con el usuario `postgres` o con superusuarios. Diseñé en Kiro una arquitectura RBAC (Role-Based Access Control) bien segmentada en dos niveles:
+
+1. **Roles de grupo (sin login, puramente para herencia de permisos):**
+   * `rol_admin_datos`: Control total de DDL y DML sobre el esquema `public`.
+   * `rol_app_web`: El rol que usa la tienda online; solo puede consultar catálogo, insertar pedidos y autenticar.
+   * `rol_cajero`: Permisos para facturación en local físico.
+   * `rol_auditor`: Rol de solo lectura sobre vistas del sistema y catálogos de auditoría.
+2. **Usuarios de conexión (con login y contraseñas robustas):**
+   * `admin_datos`: Asignado al grupo `rol_admin_datos`.
+   * `app_web`: Asignado al grupo `rol_app_web`.
+
+Para blindar la privacidad apliqué **seguridad a nivel de columna (Column-Level Security)**:
+```sql
+-- La aplicación web solo puede ver los datos mínimos del usuario, jamás su password ni datos confidenciales
+GRANT SELECT (id_usuario, nombre, activo) ON usuario TO rol_app_web;
+```
+Además, para evitar sorpresas a futuro, configuré `ALTER DEFAULT PRIVILEGES IN SCHEMA public ...` de modo que cualquier tabla nueva creada por el administrador nazca bloqueada para los roles públicos por defecto.
+
+### 2.2 Auditoría nativa y el Simulacro de Incidente
+Para poder auditar qué pasa en la base, configuré en `postgresql.auto.conf`:
+```text
+log_connections = on
+log_disconnections = on
+log_statement = 'all'
+```
+Luego ejecuté un simulacro de ataque (`sql/simulacro_incidente.sql`) simulando que un atacante lograba vulnerar la aplicación web y ejecutaba comandos desde la sesión `app_web`:
+* Intentó cambiar su rol a administrador: `SET ROLE admin_datos;` &rarr; **Rechazado (`permission denied`)**.
+* Intentó crear un usuario con privilegios: `CREATE ROLE hacker WITH LOGIN;` &rarr; **Rechazado (`permission denied`)**.
+* Intentó hacer un dump de correos electrónicos: `SELECT email FROM usuario;` &rarr; **Rechazado (`permission denied for table usuario`)**.
+
+### 2.3 El Hallazgo Crítico H-1 y la Solución con `SECURITY DEFINER`
+Durante este simulacro me topé con un problema gravísimo que casi nadie ve a simple vista: **la aplicación web no podía autenticar a nadie**. 
+
+Al ejecutar el login:
+```sql
+SELECT fn_autenticar('cliente@foodstore.com', 'clave123');
+```
+PostgreSQL tiraba el error: `ERROR: permission denied for table usuario`.  
+**¿Por qué pasaba esto?** Porque la función `fn_autenticar` había sido creada como `SECURITY INVOKER`. Esto significa que la función corre con los permisos del usuario que la llama. Como yo le había quitado a `app_web` el permiso de `SELECT` sobre la tabla `usuario` (para proteger los hashes de contraseñas), cuando la función intentaba verificar la clave, el motor la bloqueaba.
+
+**La tentación:** La solución rápida y descuidada hubiera sido darle `GRANT SELECT ON usuario TO rol_app_web;`. Pero eso tiraba a la basura todo el mínimo privilegio.  
+**Mi solución de ingeniería:** Modifiqué la función para que opere como `SECURITY DEFINER`, asignándole la propiedad a `admin_datos` y blindándole el `search_path`:
+```sql
+ALTER FUNCTION fn_autenticar(text, text) OWNER TO admin_datos;
+ALTER FUNCTION fn_autenticar(text, text) SECURITY DEFINER;
+ALTER FUNCTION fn_autenticar(text, text) SET search_path = public, pg_temp;
+```
+Con esto logré que la función se ejecute con los permisos de su dueño (`admin_datos`), verifique la clave internamente y le devuelva a la aplicación web únicamente un booleano (`true` o `false`). La aplicación puede autenticar a los clientes pero sigue estando totalmente ciega ante los datos sensibles de la tabla.
+
+### 2.4 Anonimización de datos (PII) y Hallazgo H-2
+Al revisar el archivo de log crudo con `log_statement = 'all'`, descubrí el **Hallazgo H-2**: el motor registraba en texto plano los parámetros de la función de autenticación, es decir, las contraseñas reales tipeadas por los usuarios. 
+
+Para remediar esto antes de cualquier análisis externo o uso con IA:
+1. Programé en Python `sql/anonimizar_log.py`, que procesa las líneas del log y sustituye con expresiones regulares direcciones IP, puertos, correos y contraseñas por tokens hash.
+2. Diseñé la tabla `usuario_anon` (`sql/usuario_anon.sql`) para compartir datos de testing sin filtrar datos personales (PII): enmascaré los emails con un hash determinista con sal (`md5(id || 'sal_secreta') || '@anon.example'`), eliminé los hashes de contraseñas y conservé los identificadores numéricos `id_usuario`. En `verificacion_equivalencia.md` comprobé que la tabla anonimizada mantuvo una **equivalencia estadística del 100%** con la original en cantidad de usuarios (6), roles y volumen de pedidos acumulados.
+
+---
+
+## 3. Unidad 6 · Mantenimiento, backup y simulación de desastre
+
+### 3.1 Mantenimiento preventivo en PostgreSQL (`maintenance.sql`)
+En la Unidad 6 me enfoqué en la salud del motor. Una base de datos que procesa 200,000 pedidos genera miles de tuplas muertas por día debido a la arquitectura MVCC de PostgreSQL. 
+
+Diseñé un script de mantenimiento con tres pilares:
+1. **`VACUUM (ANALYZE, VERBOSE)`:** Limpia las tuplas muertas de las tablas transaccionales (`pedido`, `pedido_producto`) y actualiza el mapa de espacio libre (`FSM`), permitiendo que el motor reutilice los bloques de disco sin inflar el tamaño físico del archivo.
+2. **`REINDEX TABLE CONCURRENTLY`:** A medida que se insertan y borran registros, los árboles B-Tree de los índices se desbalancean y fragmentan (el famoso "bloat"). Al reindexar de forma concurrente, el motor crea un índice nuevo en paralelo y reemplaza al viejo sin bloquear las consultas de los usuarios.
+3. **Actualización de estadísticas (`ANALYZE`):** Obliga al optimizador a refrescar las muestras de frecuencia y distribución de valores en `pg_statistic`, evitando que el planificador tome malas decisiones como elegir un sequential scan en vez de un index scan.
+
+### 3.2 Automatización de respaldos en PowerShell (`backup_foodstore.ps1`)
+Desarrollé un script en PowerShell para automatizar los backups diarios con criterios profesionales:
+* Verifica mediante `Get-Service postgresql*` que el servicio esté activo.
+* Chequea con `Get-PSDrive` que el disco tenga al menos 500 MB libres para no saturar la máquina.
+* Lanza `pg_dump.exe -U postgres -F c -b -v -f <archivo.dump>`, utilizando el formato custom comprimido con zlib (`-Fc`), que es mucho más rápido y permite restauración paralela y selectiva.
+* Verifica que el archivo generado exista y tenga peso mayor a 0 bytes.
+* Aplica una política de rotación eliminando automáticamente respaldos con más de 7 días de antigüedad.
+
+### 3.3 Simulacro de desastre contra reloj: Medición de RTO y RPO
+Para probar si nuestro plan de contingencia servía en la vida real, programé `restore_test.ps1` para simular una caída catastrófica del servidor:
+1. El script tomó el último respaldo generado (`foodstore_20261110_155502.dump`, de 11.2 MB comprimido, correspondiente a una base de 96 MB sin comprimir).
+2. Levantó una base efímera llamada `foodstore_restore_test`.
+3. Inició un cronómetro de alta resolución con `[System.Diagnostics.Stopwatch]::StartNew()`.
+4. Ejecutó `pg_restore.exe --no-owner --role=postgres -d foodstore_restore_test`.
+5. Detuvo el cronómetro y lanzó `validate_restore.sql` para chequear integridad.
 
 ```
-[ METODOLOGÍAS DE PRUEBA APLICADAS ]
-├── 1. Transacciones Reversibles (BEGIN ... ROLLBACK)  --> U4 (Migración FNBC) y U8 (Borradores cancelados en SQLite)
-├── 2. Entornos Aislados y Réplicas Sintéticas        --> U4, U5, U6 (food_store_copia, restore_test con 200k pedidos)
-├── 3. Simulacros de Seguridad y Análisis Forense      --> U5 (Ataque controlado desde app_web y parseo de logs)
-├── 4. Simulacro de Desastre contra Reloj (RTO/RPO)   --> U6 (Restauración cronometrada con restore_test.ps1)
-└── 5. Batería de Conflictos del Semáforo Móvil       --> U8 (Casos C1 a C7 evaluando quiebres, lápidas e idempotencia)
+[ RESULTADOS DEL SIMULACRO DE DESASTRE ]
+• Tamaño de la base de datos en disco: 96 MB
+• Cantidad de pedidos recuperados: 200,001
+• Cantidad de productos recuperados: 50,002
+• Tiempo de Recuperación (RTO Medido): 4.84 segundos
+• Objetivo de Negocio fijado (SLA RTO): Menor a 15 minutos (CUMPLIDO CON CRECES)
+• Punto de Recuperación (RPO Calculado): 1.70 minutos
+• Límite Máximo Tolerable (SLA RPO): Menor a 1 hora (CUMPLIDO CON CRECES)
+• Integridad referencial: 0 claves foráneas rotas o tuplas huérfanas
 ```
 
-### 2.1 Uso de Transacciones Reversibles
-* **En la Unidad 4:** La migración de datos desde `control_lote_almacen` hacia `responsable_control` y `control_lote_almacen_nuevo` involucraba transformar miles de filas. Para no arriesgarme a perder datos en caso de fallo, envolví todas las sentencias de inserción dentro de un bloque transaccional con control de errores. Primero verifiqué que la cantidad de registros origen fuera idéntica a la suma de los registros destino (`COUNT(*) = 6`); de haber existido alguna discrepancia, el script ejecutaba automáticamente un `ROLLBACK` dejando el esquema intacto.
-* **En la Unidad 8:** En `pruebas_sqlite.sql` demostré el comportamiento atómico de la tablet:
-  - Probé un borrador completo guardado con `BEGIN TRANSACTION ... COMMIT` (cabecera en `pedido_borrador`, 2 ítems en `item_borrador` y la solicitud en `cola_sync`).
-  - Luego probé una cancelación en mostrador con `BEGIN TRANSACTION ... ROLLBACK` (el mozo cargó un pedido de cerveza pero el cliente se arrepintió antes de confirmar). Verifiqué con `SELECT COUNT(*) FROM pedido_borrador WHERE id_local = '...'` que el motor devolvió **0 filas**, demostrando que no quedó ningún registro huérfano en SQLite.
-
-### 2.2 Estrategia de Copias de Prueba y Aislamiento de Entornos
-Cumplí a rajatabla la regla de oro de la materia: **jamás experimentar sobre la base de producción ni sobre ambientes de desarrollo limpios**:
-* En las Unidades 4 y 5 creé la base `food_store_copia` a partir de la base maestra, poblándola con datos volumétricos representativos (200,001 pedidos, 200,000 detalles, 50,002 productos y 20,001 clientes). Esto me permitió simular condiciones reales de carga.
-* En la Unidad 6, para probar la recuperación ante desastres sin pisar la base activa, el script de PowerShell se encargó de instanciar dinámicamente una base efímera llamada `foodstore_restore_test`. Todas las pruebas de restauración y validación corrieron en ese sandbox aislado.
-
-### 2.3 Simulacro de Acceso Indebido y Reconstrucción Forense (Unidad 5)
-Para probar la seguridad no me quedé con mirar las sentencias `GRANT`: **me puse en el rol del atacante**:
-1. Abrí una sesión en `psql` e invoqué explícitamente el rol web: `SET ROLE app_web;`.
-2. Ejecuté una ráfaga de ataques en `sql/simulacro_incidente.sql`:
-   - Intenté llamar 4 veces consecutivas a `fn_autenticar` con contraseñas erróneas.
-   - Lancé un `SELECT * FROM pg_stat_activity;` y lecturas sobre catálogos de auditoría.
-   - Quise consultar directamente los emails de la tabla `usuario` (`SELECT email FROM usuario;`).
-   - Intenté escalar privilegios a administrador: `SET ROLE admin_datos;`.
-   - Quise crear un usuario puerta trasera: `CREATE ROLE hacker WITH LOGIN PASSWORD '123';`.
-3. El motor de PostgreSQL rechazó cada intento lanzando errores `permission denied`.
-4. Luego tomé el log crudo del servidor, lo procesé con mi script `anonimizar_log.py` para enmascarar datos sensibles, y en `docs/informe_incidente.md` reconstruí la línea temporal forense contrastando lo que la IA creía que había pasado contra lo que realmente registró el motor.
-
-### 2.4 Simulacro de Desastre contra Reloj (Unidad 6)
-Para probar el plan de contingencia de forma verificable:
-1. Tomé el archivo de backup comprimido más reciente (`foodstore_20261110_155502.dump`, de 11.2 MB).
-2. Ejecuté `restore_test.ps1`. El script inició un cronómetro de alta precisión (`[System.Diagnostics.Stopwatch]::StartNew()`), creó la base de prueba, ejecutó `pg_restore.exe --no-owner --role=postgres` y detuvo el reloj apenas finalizó la carga.
-3. Inmediatamente después, el script ejecutó `validate_restore.sql`, que realizó consultas sobre `information_schema` y `pg_constraint` verificando:
-   - Que existieran las 7 tablas del negocio.
-   - Que los 200,001 pedidos estuvieran presentes.
-   - Que ninguna clave foránea entre `pedido`, `pedido_producto` y `producto` estuviera rota o huérfana.
-
-### 2.5 Batería de Pruebas del Semáforo Móvil (Unidad 8)
-En `simulador.py` implementé la verificación programática de los 7 casos de prueba exigidos por la cátedra:
-* **Caso C1 (Consulta offline):** La tablet consulta `producto_cache` con `WHERE disponible = 1 AND eliminado = 0 AND stock_visto > 0` sin invocar ningún socket de red ni tocar a PostgreSQL.
-* **Caso C7 (Restricciones locales):** Intenté insertar en `item_borrador` un ítem con cantidad en cero (`CHECK (cantidad > 0)`) y otro con `producto_id = 9999999` inexistente en el catálogo. Ambos fueron abortados por SQLite (`IntegrityError`), comprobándose que la tabla no guardó filas espurias.
-* **Caso C2 (Conflicto de precio y resolución):** Creé un borrador con Muzza a $100.00 (10000 centavos). En el snapshot del servidor subí el precio a $125.00 (12500 centavos). Al correr el semáforo, el estado pasó a **`CONFLICTO`** detallando la diferencia. Luego simulé la aceptación del cliente en mostrador: actualicé el precio del borrador a 12500 centavos, emití una nueva solicitud y el semáforo la aprobó como **`SIMULADO_APROBADO`**.
-* **Caso C3 (Quiebre de stock):** Creé un borrador pidiendo 50 Napolitanas (cuando el servidor solo tiene 10 unidades). El semáforo evaluó la condición `ib.cantidad > s.stock` y lo marcó inmediatamente como **`RECHAZADO`**.
-* **Caso C4 (Baja lógica / lápida):** Creé un borrador con un producto activo. En el servidor lo di de baja lógica (`eliminado = 't'`). El semáforo rechazó la solicitud (**`RECHAZADO`**). Al refrescar el catálogo en la tablet, verifiqué que la fila física continuó existiendo en `producto_cache` (para no romper claves foráneas de pedidos viejos), pero desapareció de las consultas de venta activa.
-* **Caso C5 (Aprobación limpia):** Creé un borrador con Producto 4 (2 unidades a $4138.00). Al coincidir exactamente con el stock y precio del servidor, el semáforo arrojó **`SIMULADO_APROBADO`**.
-* **Caso C6 (Idempotencia y deduplicación):** Intenté reenviar la misma solicitud de C5 con el mismo UUID. SQLite rechazó la inserción por colisión de `PRIMARY KEY`. Al correr el semáforo nuevamente, la solicitud existente conservó su estado `SIMULADO_APROBADO` sin reevaluarse.
+Este resultado me demostró que el procedimiento es totalmente repetible y confiable ante un corte de luz o fallo del servidor.
 
 ---
 
-## 3. Qué resultados obtuve
+## 4. Unidad 7 · NoSQL y nuevas formas de almacenamiento (MongoDB)
 
-Las pruebas arrojaron datos empíricos y mediciones reales que demuestran el cumplimiento de los objetivos planteados:
+### 4.1 Rompiendo el molde relacional: Diseño documental de `pedidos`
+En la Unidad 7 nos tocó incorporar MongoDB. Lo primero que entendí fue que **migrar a NoSQL no es agarrar las tablas de PostgreSQL y convertirlas una a una en colecciones de MongoDB con referencias**. Si hacía eso, iba a terminar necesitando hacer `$lookup` (el equivalente al JOIN de SQL) para todo, perdiendo la principal ventaja que tiene una base documental.
+
+Modelé la colección `pedidos` pensando en el concepto de **Agregado (DDD)**:
+```javascript
+{
+  "_id": 2,
+  "fecha": ISODate("2026-11-10T12:00:00Z"),
+  "estado": "ENTREGADO",
+  "cliente": {
+    "id_cliente": 201,
+    "nombre": "Ana Gómez",
+    "email": "ana@example.com"
+  },
+  "lineas": [
+    { "producto_id": 1, "nombre": "Muzza", "cantidad": 2, "precio_unitario": 100.00 },
+    { "producto_id": 2, "nombre": "Napolitana", "cantidad": 1, "precio_unitario": 120.00 }
+  ],
+  "total": 320.00
+}
+```
+
+**¿Por qué este diseño?**
+1. **Precio histórico congelado:** Al embeber las líneas con su `precio_unitario` al momento de la compra, me aseguro de que si mañana la Muzza sube a $150 en el catálogo maestro, el pedido histórico de Ana sigue valiendo $320.00.
+2. **Lectura atómica sin JOINs:** Para mostrar el detalle del pedido en la pantalla del celular del cliente, la aplicación web hace una sola lectura sobre un único documento (`db.pedidos.findOne({ _id: 2 })`) y tiene toda la información junta (fecha, estado, cliente, productos, precios y total) en un solo viaje al disco.
+
+### 4.2 Las 4 consultas analíticas y la validación cruzada con PostgreSQL
+Desarrollé en `consultas_mongodb.js` cuatro consultas analíticas y luego escribí sus equivalentes exactas en SQL en `consultas_postgresql.sql`:
+* **Consulta 4.a (Pedidos por estado):** Buscar órdenes con `estado = 'ENTREGADO'`.
+  - MongoDB: `db.pedidos.find({ estado: "ENTREGADO" })` &rarr; Retornó 3 pedidos (IDs 2, 4 y 7).
+  - PostgreSQL: `SELECT id_pedido FROM pedido WHERE estado = 'ENTREGADO'` &rarr; Retornó los mismos 3 pedidos (IDs 2, 4 y 7).
+* **Consulta 4.b (Filtro en subdocumentos):** Pedidos que contienen el Producto ID = 3 en sus líneas.
+  - MongoDB: `db.pedidos.find({ "lineas.producto_id": 3 })` &rarr; Retornó 3 pedidos (IDs 2, 4 y 6).
+  - PostgreSQL: `SELECT DISTINCT id_pedido FROM pedido_producto WHERE id_producto = 3` &rarr; Retornó los mismos 3 pedidos (IDs 2, 4 y 6).
+* **Consulta 4.c (Filtro por agregación de total):** Pedidos con total mayor a $2000.00.
+  - Ambos motores retornaron exactamente 2 pedidos: el ID 4 (por $2050.00) y el ID 6 (por $3500.00).
+* **Consulta 4.d (Agrupación con `$unwind` y `$group`):** Cálculo de ventas acumuladas por producto.
+
+La coincidencia fue del **100% exacto**, demostrando que ambos modelos son semánticamente equivalentes.
+
+### 4.3 La Decisión Arquitectónica: Enfoque Híbrido CQRS
+Al momento de comparar los motores, no caí en la postura simplista de decir "uno es mejor que el otro". La decisión madura de diseño fue adoptar una **arquitectura híbrida CQRS (Command Query Responsibility Segregation)**:
+* **PostgreSQL es el Core Transaccional (OLTP):** Es la Única Fuente de Verdad. Manda sobre el catálogo oficial, precios maestros, control rígido de stock, usuarios, contraseñas y facturación fiscal.
+* **MongoDB es el Read Model:** Recibe una copia de los pedidos confirmados para que la aplicación móvil y la tienda web atiendan miles de consultas concurrentes a máxima velocidad sin sobrecargar a PostgreSQL con JOINs pesados. Si MongoDB se cae o se corrompe, se reconstruye desde PostgreSQL sin perder un solo peso.
+
+---
+
+## 5. Unidad 8 · Bases de datos móviles e integración (SQLite)
+
+### 5.1 El escenario del Food Truck en la feria: Venta Offline-First
+La Unidad 8 nos puso en el escenario más realista de todos: un food truck de Food Store que va a vender hamburguesas y pizzas a una feria gastronómica en un predio al aire libre donde no hay señal de celular ni WiFi. El cajero tiene una tablet y tiene que poder cobrar y emitir pedidos sin conexión.
+
+Para resolver esto diseñé en SQLite (`schema_sqlite.sql`) un esquema móvil pensado para no fallar:
+1. **`PRAGMA foreign_keys = ON;`:** SQLite por defecto tiene las claves foráneas apagadas por compatibilidad histórica; activarlas al inicio fue mandatorio.
+2. **Modo `STRICT` en las 4 tablas:** Forcé tipado estricto (`CREATE TABLE ... STRICT;`). Esto impide que alguien meta accidentalmente un string en un campo de stock o un número decimal en una clave.
+3. **Precios en centavos enteros (`INT`):** Para evitar los desastres de redondeo de punto flotante de los tipos `REAL` en dispositivos embebidos, todos los importes se manejan como centavos enteros (`$120.50` = `12050 centavos`).
+4. **Identificadores UUID v4 (`TEXT PRIMARY KEY`):** Como varias tablets operan en simultáneo fuera de línea, usar secuencias autonuméricas (`1, 2, 3...`) provocaría colisiones seguras al sincronizar. Con UUID v4 cada borrador nace con un identificador único a nivel global.
+
+### 5.2 El Semáforo de Sincronización y la Regla de Oro
+El núcleo de la unidad fue el algoritmo del semáforo (`semaforo.sql`). Cuando la tablet recupera conectividad o descarga una instantánea del servidor (`snapshot_servidor`), corre una consulta de conciliación con CTE y `UPDATE ... FROM`:
+* **Rojo (`RECHAZADO`):** Si un producto no existe en el servidor, si fue dado de baja lógica (`eliminado = 't'`), si está inactivo (`disponible = 'f'`) o si la cantidad pedida en la feria supera el stock físico real que queda en el servidor.
+* **Amarillo (`CONFLICTO`):** Si hay stock y disponibilidad pero el precio cambió en el servidor respecto al precio que la tablet tenía guardado en su catálogo offline. Le permite al mozo negociar con el cliente en el momento: "el producto subió $25; ¿lo acepta?".
+* **Verde (`SIMULADO_APROBADO`):** Si precio, stock y vigencia coinciden al 100%.
+
+**La Regla de Oro:** *"El móvil propone, el servidor dispone"*.  
+La tablet jamás descuenta stock ni confirma ventas fiscales. El estado `SIMULADO_APROBADO` es una pre-validación teórica.
+
+### 5.3 Simulación de Casos C1 a C7 y Verificación en PostgreSQL
+Mediante mi script `simulador.py` probé los 7 casos requeridos:
+* **C1:** Consulta offline de catálogo activo (`WHERE disponible = 1 AND eliminado = 0 AND stock_visto > 0`).
+* **C7:** Intento de insertar ítem con cantidad = 0 y producto inexistente (ambos rechazados por restricciones `CHECK` y `FOREIGN KEY`).
+* **C2:** Subida de precio en servidor &rarr; `CONFLICTO`; cliente acepta, se actualiza el borrador local y reintenta &rarr; `SIMULADO_APROBADO`.
+* **C3:** Se piden 50 Napolitanas cuando en el servidor quedan 10 &rarr; `RECHAZADO` (stock insuficiente).
+* **C4:** Baja lógica de producto en servidor &rarr; `RECHAZADO`. Al actualizar el catálogo de la tablet, la fila permanece en la base por integridad histórica pero desaparece de la pantalla de ventas.
+* **C5:** Pedido limpio coincidente &rarr; `SIMULADO_APROBADO`.
+* **C6:** Reenvío de solicitud con el mismo UUID &rarr; SQLite rechaza la duplicación por `PRIMARY KEY` y el semáforo ignora la reevaluación por no estar en estado `PENDIENTE`.
+
+Al finalizar toda la simulación, corrí la auditoría sobre la base central de PostgreSQL:
+* `SELECT COUNT(*) FROM pedido;` &rarr; **200,001 pedidos** (exactamente los mismos iniciales; cero ventas insertadas por la tablet).
+* `SELECT stock FROM producto WHERE id_producto IN (1, 2, 3, 4);` &rarr; **5, 10, 115 y 130 unidades** (cero unidades descontadas).
+La regla de oro quedó demostrada empíricamente.
+
+---
+
+## 6. Revisión Crítica de Inteligencia Artificial y los 5 Descartes Técnicos
+
+A lo largo de todo el trabajo utilicé herramientas de IA (Kiro para la especificación formal de requisitos EARS y OpenCode/LLMs para generación de borradores de código). Sin embargo, mantuve un rol activo de **auditoría y control de calidad**. A continuación expongo los cinco descartes técnicos fundamentales donde la intervención humana corrigió propuestas erróneas o peligrosas de la IA:
 
 ```
 +-------------------------------------------------------------------------------------------------------+
-|                               CUADRO GENERAL DE RESULTADOS Y MÉTRICAS                                 |
-+---------+---------------------------------+-----------------------------------+-----------------------+
-| Unidad  | Indicador / Prueba              | Métrica Medida en el Motor        | Estado de Validación  |
-+---------+---------------------------------+-----------------------------------+-----------------------+
-| U4      | Tiempo consulta Top Categorías  | De 0.123 ms a 0.077 ms            | 37.4% más rápido      |
-| U4      | Auditoría de sincronización     | 0 tuplas desincronizadas          | Integridad 100%       |
-| U5      | Detección de vulnerabilidad     | Hallazgo H-1 (fn_autenticar)      | Corregido con DEFINER |
-| U5      | Anonimización PII               | 6 pruebas de agregados y roles    | 0 fugas de datos      |
-| U6      | Tiempo de recuperación (RTO)    | 4.84 segundos cronometrados       | Objetivo: < 15 min    |
-| U6      | Punto de recuperación (RPO)     | 1.70 minutos de desvío            | Objetivo: < 1 hora    |
-| U6      | Integridad post-restore         | 200,001 órdenes y 0 FK rotas      | Base 100% íntegra     |
-| U7      | Paridad de consultas MongoDB/PG | 100% de coincidencia exacta       | 3/3, 3/3 y 2/2 pedidos|
-| U8      | Invariabilidad del servidor     | 200,001 pedidos (0 alterados)     | Regla de oro intacta  |
-| U8      | Stock en servidor central       | Productos 1..4: 5, 10, 115 y 130  | 0 unidades tocadas    |
-+---------+---------------------------------+-----------------------------------+-----------------------+
+|                                  MATRIZ DE DESCARTE TÉCNICO A LA IA                                   |
++----+--------+--------------------+-----------------------------------+--------------------------------+
+| ID | Unidad | Componente         | Propuesta de la IA                | Decisión y Motivo de Rechazo   |
++----+--------+--------------------+-----------------------------------+--------------------------------+
+| 1  | U6     | Mantenimiento SQL  | VACUUM FULL diario en caliente    | RECHAZADO: Lock exclusivo tumba|
+|    |        |                    |                                   | producción y paraliza ventas   |
+| 2  | U8     | SQLite Móvil       | INTEGER PRIMARY KEY AUTOINCREMENT | RECHAZADO: Colisión masiva de  |
+|    |        |                    |                                   | IDs entre tablets sin señal    |
+| 3  | U8     | Sincronización     | Triggers remotos por socket       | RECHAZADO: Congela la tablet si|
+|    |        |                    |                                   | no hay 4G; rompe Offline-First |
+| 4  | U7     | Análisis NoSQL     | Afirmar que MongoDB no tiene ACID | REFUTADO: Soporta ACID multi-  |
+|    |        |                    |                                   | doc desde v4.0 y nativo en doc |
+| 5  | U5     | Seguridad Login    | GRANT SELECT ON usuario a app_web | RECHAZADO: Expone contraseñas; |
+|    |        |                    |                                   | se resolvió con SECURITY DEF.  |
++----+--------+--------------------+-----------------------------------+--------------------------------+
 ```
 
-### 3.1 Métricas de Optimización en la Unidad 4
-Con `EXPLAIN ANALYZE` medí la diferencia entre calcular el Top 5 de categorías sobre la marcha y consultarlo desde la tabla desnormalizada:
-* **Consulta original (sobre tablas normalizadas):** Requería un `Seq Scan` sobre la tabla de ventas con agregación hash en memoria, arrojando un tiempo promedio de ejecución de **0.123 milisegundos**.
-* **Consulta desnormalizada (`categoria_venta_dia`):** Al contar con los datos preagregados y un índice B-tree sobre `(fecha, total_vendido DESC)`, el planificador utilizó un `Bitmap Heap Scan`, bajando el tiempo a **0.077 milisegundos**.
-* **Ganancia real:** Se logró una **reducción del 37.4% en el tiempo de CPU por consulta**. En un dashboard consultado cientos de veces por minuto, esto previene la saturación del pool de conexiones. Además, el script de auditoría periódica confirmó **cero filas desincronizadas**.
-
-### 3.2 Hallazgos Forenses en la Unidad 5
-El simulacro de incidente me permitió detectar dos hallazgos críticos de seguridad:
-* **Hallazgo Crítico H-1:** Descubrí que la función `fn_autenticar(email, password)` había sido creada originalmente con `SECURITY INVOKER`. Cuando la aplicación web (`app_web`) intentaba autenticar un usuario en el login, PostgreSQL bloqueaba la ejecución con `ERROR: permission denied for table usuario`, porque `app_web` carece por diseño de permisos de lectura sobre las columnas de contraseñas. El mínimo privilegio estaba bien aplicado a las tablas, pero rompía el login. Lo solucioné convirtiendo la función a `SECURITY DEFINER` asignada al usuario `admin_datos` y con `search_path = public, pg_temp` explícito.
-* **Hallazgo H-2:** Comprobé que el parámetro `log_statement = 'all'` registra en texto plano el contenido de los parámetros pasados a las funciones. En el log crudo encontré contraseñas de usuarios en texto claro. Esto fundamentó la necesidad de aplicar anonimización previa con `anonimizar_log.py` antes de compartir logs con terceros o asistentes de IA.
-* **Equivalencia estadística de `usuario_anon`:** Al comparar la tabla original contra la anonimizada, las 6 consultas de control arrojaron métricas idénticas: 6 usuarios en total, distribución exacta por roles (2 clientes, 1 mozo, 1 cocinero, 1 cajero, 1 admin), y exactamente los mismos montos acumulados por usuario en la tabla de pedidos.
-
-### 3.3 Tiempos de Recuperación en la Unidad 6
-El simulacro de desastre con `restore_test.ps1` arrojó resultados concluyentes:
-* **RTO (Recovery Time Objective):** El tiempo total medido entre la creación de la base réplica y la finalización de `pg_restore` fue de **4.84 segundos** para una base de datos de 96 MB de tamaño físico en disco conteniendo más de 200,000 pedidos. Esto pulverizó el objetivo de negocio de RTO &le; 15 minutos.
-* **RPO (Recovery Point Objective):** Al contar con backups programados diarios combinados con archivado continuo de logs WAL, la pérdida máxima potencial de datos ante una caída imprevista se calculó en **1.70 minutos**, muy por debajo del límite de tolerancia de 1 hora.
-* **Validación de integridad:** `validate_restore.sql` confirmó que las 7 tablas del modelo quedaron operativas, los índices reconstruidos y no se detectó ninguna tupla huérfana.
-
-### 3.4 Resultados Cruzados en MongoDB vs PostgreSQL (Unidad 7)
-Al ejecutar las cuatro consultas analíticas sobre ambos motores, obtuve una **coincidencia del 100%**:
-* **Consulta 4.a (Pedidos entregados):** Ambos motores retornaron exactamente 3 pedidos (los IDs 2, 4 y 7).
-* **Consulta 4.b (Pedidos que contienen el Producto 3):** Ambos motores retornaron exactamente 3 pedidos (los IDs 2, 4 y 6).
-* **Consulta 4.c (Pedidos con importe total superior a $2000.00):** Ambos motores retornaron exactamente 2 pedidos (el ID 4 por $2050.00 y el ID 6 por $3500.00).
-Esto demostró que el modelo documental en MongoDB preserva con fidelidad matemática los datos originados en el motor relacional.
-
-### 3.5 Invariabilidad en PostgreSQL en la Unidad 8
-Tras ejecutar en la tablet todas las simulaciones de venta, cambios de precios, quiebres de stock y reintentos, ejecuté en PostgreSQL la consulta de auditoría final:
-```sql
-SELECT COUNT(*) AS total_pedidos FROM pedido;
-SELECT id_producto, nombre, stock, precio_lista FROM producto WHERE id_producto IN (1, 2, 3, 4) ORDER BY id_producto;
-```
-* **Conteo de pedidos:** Se mantuvo exactamente en **200,001 pedidos** (cero pedidos espurios creados por la tablet).
-* **Stock de productos:** Muzza continuó en **5 unidades**, Napolitana en **10 unidades**, Producto 3 en **115 unidades** y Producto 4 en **130 unidades** (cero unidades descontadas).
-Esto demostró empíricamente que la regla de oro se cumplió: la tablet simuló y evaluó en su entorno local, pero no alteró ni un solo dato en el servidor transaccional central.
+### Detalle de los 5 Descartes:
+1. **Descarte de `VACUUM FULL` diario (Unidad 6):**  
+   La IA recomendó meter `VACUUM FULL` en el script diario para "desfragmentar el disco". Lo rechacé porque `VACUUM FULL` reescribe la tabla adquiriendo un **`ACCESS EXCLUSIVE LOCK`**, bloqueando todas las lecturas y escrituras. En una base con 200,000 pedidos, dejaría a toda la empresa sin sistema durante minutos. Mantuve `VACUUM (ANALYZE, VERBOSE)` concurrente.
+2. **Descarte de claves autonuméricas en la tablet (Unidad 8):**  
+   La IA propuso `AUTOINCREMENT` en SQLite. Lo descarté porque si tres tablets venden sin conexión, las tres van a generar el pedido con `id = 1`, provocando una colisión fatal al volver a la base central. Impuse **UUID v4**.
+3. **Descarte de triggers móviles remotos (Unidad 8):**  
+   La IA sugirió que un trigger en SQLite intente pegarle a la API central para descontar stock en el momento. Lo rechacé porque si el food truck está en un pozo sin señal en la feria, la tablet se congelaría esperando el timeout de red, impidiendo cobrar. La sincronización debe ser asíncrona mediante el semáforo.
+4. **Refutación de la falacia sobre transacciones ACID en NoSQL (Unidad 7):**  
+   La IA repitió el mito de que MongoDB no soporta ACID. Lo refuté demostrando que desde MongoDB 4.0 existen transacciones ACID multi-documento distribuidas, y que además, al embeber las líneas dentro del pedido, la atomicidad es nativa a nivel de documento sin ningún costo de coordinación.
+5. **Rechazo a otorgar permisos masivos sobre `usuario` (Unidad 5):**  
+   Ante el fallo de `fn_autenticar`, la IA propuso darle `SELECT` a la app sobre toda la tabla `usuario`. Lo rechacé de plano porque exponía los hashes de contraseñas de todos los clientes. Lo solucioné como corresponde en ingeniería: cambiando la función a `SECURITY DEFINER` con search-path seguro.
 
 ---
 
-## 4. Qué decisiones de diseño tomé
+## 7. Conclusión Final y Aprendizajes de Carrera
 
-A lo largo de las 5 unidades tomé decisiones de diseño justificadas por criterios de ingeniería de software y administración de datos:
+Haber completado este proyecto integrador a lo largo de las 8 unidades cambió totalmente mi perspectiva sobre lo que significa trabajar con bases de datos. 
 
-### 4.1 Normalización selectiva y Vistas de Compatibilidad (Unidad 4)
-Al detectar la violación de FNBC en `control_lote_almacen`, la solución académica pura hubiera sido eliminar la tabla vieja y forzar a todos los programas clientes a reescribir sus queries apuntando a `responsable_control` y `control_lote_almacen_nuevo`.  
-* **Mi decisión:** Apliqué el patrón de **Vista de Compatibilidad**. Mantuve la descomposición limpia en el modelo físico subyacente, pero expuse una vista con el nombre original que hace el `JOIN` automáticamente. De este modo eliminé las anomalías de actualización en la base sin generar tiempo de inactividad ni forzar refactorizaciones costosas en los sistemas clientes.
+Cuando uno recién arranca a programar, piensa que una base de datos es simplemente tirar un `CREATE TABLE`, meter un par de `INSERT` y hacer andar una aplicación. Hoy me doy cuenta de que la base de datos es el corazón de cualquier negocio: si la base se bloquea, la empresa no factura; si la base pierde datos por un desastre y no tiene backups probados, la empresa quiebra; y si la base expone datos por una mala política de permisos, la empresa enfrenta problemas legales gravísimos.
 
-### 4.2 Cuándo desnormalizar y qué salvaguardas imponer (Unidad 4)
-* **Mi decisión:** La desnormalización no debe ser la regla sino una excepción muy justificada. Solo desnormalicé la tabla `categoria_venta_dia` porque los dashboards ejecutivos generan un patrón de lectura masivo y concurrente que no varía segundo a segundo.  
-* **Salvaguardas aplicadas:** Para evitar que la tabla desnormalizada quedara desfasada de la realidad transaccional, implementé dos capas de protección:
-  1. Un **trigger `AFTER INSERT OR UPDATE`** sobre `pedido_producto` que recalcula el acumulado de la categoría y fecha afectada.
-  2. Un **script de auditoría periódica** que compara la tabla desnormalizada contra una consulta agregada pura sobre las tablas maestras, alertando si la diferencia de filas o montos es distinta de cero.
-
-### 4.3 Mínimo Privilegio Real y Patrón `SECURITY DEFINER` (Unidad 5)
-* **Mi decisión:** Ante el problema de que `app_web` no podía autenticar usuarios, la tentación rápida era ejecutar `GRANT SELECT ON usuario TO rol_app_web;`. Descarté esa salida porque violaba el principio de mínimo privilegio: la aplicación web jamás debe tener acceso directo a las columnas de contraseñas ni a los correos de otros usuarios.  
-* **Solución aplicada:** Encapsulé la autenticación en la función `fn_autenticar`, le asigné el owner `admin_datos` y la declaré como `SECURITY DEFINER`. Como salvaguarda crítica contra ataques de inyección de rutas (search-path hijacking), le fijé un esquema estricto: `ALTER FUNCTION fn_autenticar SET search_path = public, pg_temp;`. De este modo, la aplicación puede validar si un usuario ingresó la clave correcta (`autenticado = true/false`) sin poder leer ni extraer los hashes almacenados.
-
-### 4.4 Arquitectura Híbrida CQRS en vez de sustitución tecnológica (Unidad 7)
-* **Mi decisión:** En lugar de discutir si "MongoDB es mejor que PostgreSQL" o viceversa, adopté un patrón de **Separación de Responsabilidades de Consulta y Comando (CQRS)**:
-  - **PostgreSQL es el Command Store (OLTP) y la Única Fuente de Verdad:** Maneja transacciones ACID estrictas, estados fiscales, control de inventario maestro y auditoría de seguridad.
-  - **MongoDB es el Read Model:** Recibe una copia desnormalizada de los pedidos ya confirmados. Al tener los productos y el cliente embebidos en un único documento BSON, la tienda web puede servir consultas masivas con tiempos de respuesta de milisegundos sin sobrecargar a PostgreSQL con JOINs complejos. Si MongoDB llega a corromperse, no hay pérdida de datos: se regenera completamente a partir de PostgreSQL.
-
-### 4.5 Arquitectura Móvil Offline-First con Tipado Estricto (Unidad 8)
-Para la tablet en la feria gastronómica diseñé una arquitectura pensada para fallar con elegancia:
-* **Modo `STRICT` en SQLite:** Históricamente SQLite permite guardar texto en columnas de enteros debido a su afinidad de tipos flexible. En una aplicación comercial esto es un peligro; por eso utilicé tablas `STRICT`, obligando al motor a validar tipos estáticos.
-* **Precios en centavos enteros (`INT`):** Operar con tipos `REAL` o flotantes en SQLite genera errores acumulativos de redondeo binario. Al guardar `$120.50` como `12050 centavos`, las sumas y multiplicaciones son matemáticamente exactas.
-* **UUIDs v4 para evitar colisiones distribuidas:** Si dos mozos toman pedidos fuera de línea en dos tablets distintas, usar números correlativos (`1, 2, 3...`) provocaría un desastre al sincronizar en el servidor. Con UUIDs v4 cada pedido nace con un identificador único en el mundo sin necesidad de coordinar con una secuencia central.
-* **Límites de autoridad:** La tablet solo propone borradores locales. El estado `SIMULADO_APROBADO` le avisa al cajero que la venta es factible según la última foto del catálogo, pero la transacción fiscal definitiva y el descuento de stock solo ocurren cuando el servidor central procesa la solicitud.
-
----
-
-## 5. Herramientas de IA utilizadas, bitácora y descartes fundamentales
-
-A lo largo del proyecto utilicé herramientas de IA como aceleradores de desarrollo:
-- **Kiro (Specification Engine):** Lo utilicé para estructurar los requerimientos en notación formal EARS (`WHEN ... THE SYSTEM SHALL ...`), definir documentos de diseño (`design.md`) y organizar las listas de tareas (`tasks.md`).
-- **OpenCode y modelos LLM:** Los utilicé como asistentes de programación para generar esqueletos iniciales de consultas SQL, funciones PL/pgSQL y scripts de prueba.
-
-Sin embargo, mantuve un principio inquebrantable: **la IA propone, pero el estudiante audita, valida y decide**. Jamás acepté una sugerencia sin analizar su impacto en el motor. A continuación desarrollo los cinco descartes técnicos fundamentales donde la intervención humana corrigió propuestas defectuosas de la IA:
-
-```
-[ LOS 5 DESCARTES TÉCNICOS FUNDAMENTALES A LA IA ]
-├── 1. VACUUM FULL diario en mantenimiento (U6)   --> Descartado: Bloqueo ACCESS EXCLUSIVE tumba producción
-├── 2. Claves AUTOINCREMENT en tablets (U8)       --> Descartado: Colisiones inevitables en entorno distribuido
-├── 3. Triggers remotos por socket en SQLite (U8) --> Descartado: Congelamiento de app ante caída de red celular
-├── 4. Falacia de "NoSQL no tiene ACID" (U7)      --> Refutado: MongoDB tiene ACID multi-documento desde v4.0
-└── 5. SELECT masivo para solucionar login (U5)   --> Descartado: Violación de mínimo privilegio; corregido con DEFINER
-```
-
-### 5.1 Descarte 1 (Unidad 6): `VACUUM FULL` diario en scripts de mantenimiento
-* **Lo que propuso la IA:** La IA sugirió incorporar `VACUUM FULL ANALYZE` en el script diario de mantenimiento para "recuperar espacio en disco y desfragmentar completamente las tablas".
-* **Mi análisis y descarte técnico:** Descarté la propuesta de plano. Al consultar la documentación de PostgreSQL y monitorear el catálogo `pg_locks`, comprobé que `VACUUM FULL` reescribe físicamente toda la tabla en disco y para ello adquiere un bloqueo exclusivo absoluto (**`ACCESS EXCLUSIVE LOCK`**). Este bloqueo impide cualquier operación de lectura (`SELECT`) y escritura (`INSERT`/`UPDATE`). En un sistema en producción como Food Store, ejecutar `VACUUM FULL` en horario operativo dejaría la tienda web y las cajas caídas durante minutos.
-* **Corrección aplicada:** Mantuve el mantenimiento estándar concurrente con `VACUUM (ANALYZE, VERBOSE)`, que limpia tuplas muertas y recalcula estadísticas sin interrumpir las transacciones concurrentes de los usuarios.
-
-### 5.2 Descarte 2 (Unidad 8): Claves autonuméricas en la base SQLite de la tablet
-* **Lo que propuso la IA:** La IA propuso diseñar las tablas `pedido_borrador` y `cola_sync` con claves primarias enteras tradicionales: `id INTEGER PRIMARY KEY AUTOINCREMENT`.
-* **Mi análisis y descarte técnico:** Descarté la propuesta de inmediato. En una arquitectura distribuida donde varias tablets operan fuera de línea de forma autónoma en una feria, si la Tablet A genera los pedidos 1, 2 y 3 y la Tablet B genera en paralelo los pedidos 1, 2 y 3, al reconectarse con el servidor se produce una colisión de claves insalvable.
-* **Corrección aplicada:** Sustituí los enteros por identificadores universales **UUID v4** en formato texto (`TEXT PRIMARY KEY`), garantizando unicidad global sin requerir coordinación previa.
-
-### 5.3 Descarte 3 (Unidad 8): Triggers en SQLite para actualizar stock en PostgreSQL
-* **Lo que propuso la IA:** La IA sugirió crear un trigger `AFTER INSERT ON item_borrador` en SQLite que abriera un socket o intentara llamar a un servicio remoto para "reservar" el stock en PostgreSQL en tiempo real.
-* **Mi análisis y descarte técnico:** Descarté la idea por violar los principios básicos del diseño Offline-First. En una feria donde la señal de celular es débil o nula, un trigger que intente sincronizar sincrónicamente congelaría la tablet esperando un timeout de red, impidiendo que el mozo pudiera seguir cobrando. Además, darle a la tablet credenciales de escritura directa sobre la base central viola todas las pautas de seguridad física.
-* **Corrección aplicada:** La tablet opera 100% aislada contra su caché local y la conciliación se realiza de forma asíncrona mediante el semáforo sobre el snapshot descargado.
-
-### 5.4 Descarte 4 (Unidad 7): La falacia de que "MongoDB no soporta transacciones ACID"
-* **Lo que propuso la IA:** En el análisis comparativo, la IA repitió el cliché común de que "PostgreSQL debe elegirse porque MongoDB no tiene soporte para transacciones ACID".
-* **Mi análisis y refutación técnica:** Refuté técnicamente la afirmación. Desde la versión 4.0 (lanzada en 2018), MongoDB soporta transacciones multi-documento distribuidas con semántica ACID completa (con `session.startTransaction()`, `commitTransaction()` y `abortTransaction()`). Además, en nuestro diseño documental donde las líneas de pedido están embebidas dentro del documento del pedido, la atomicidad está garantizada de forma nativa a nivel de documento único sin necesidad de transacciones distribuidas ni penalizaciones de rendimiento.
-* **Conclusión real:** La verdadera razón para mantener PostgreSQL en el backend no es la falta de ACID en MongoDB, sino que el modelo de datos maestro del negocio (clientes, categorías, productos, seguridad, facturación fiscal) es inherentemente relacional y requiere integridad referencial rígida por foreign keys.
-
-### 5.5 Descarte 5 (Unidad 5): Conceder permisos de lectura directa para solucionar el login
-* **Lo que propuso la IA:** Cuando `fn_autenticar` falló con permiso denegado, la IA sugirió ejecutar `GRANT SELECT ON usuario TO rol_app_web;`.
-* **Mi análisis y descarte técnico:** Rechacé la propuesta porque rompía el principio de mínimo privilegio. Otorgarle SELECT a la aplicación web sobre toda la tabla expone los hashes de contraseñas ante posibles ataques de inyección SQL.
-* **Corrección aplicada:** Convertí la función a `SECURITY DEFINER`, blindé su `search_path` y mantuve a la aplicación web completamente aislada de la tabla `usuario`.
-
----
-
-## 6. Conclusión Final y Aprendizajes del Proyecto
-
-El desarrollo integral de este proyecto integrador a lo largo de las 8 unidades representó un salto cualitativo en mi formación como programador. Dejé de ver a la base de datos como un simple repositorio de tablas para entenderla como un **ecosistema distribuido, vivo y de misión crítica**.
-
-Los aprendizajes más importantes que me llevo son:
-1. **El rendimiento se diseña, no se adivina:** Aprendí a no crear índices "por las dudas", sino a interpretar los costos reales en `EXPLAIN ANALYZE`, entendiendo cuándo conviene una tabla desnormalizada protegida con triggers y cuándo alcanza con un buen índice compuesto.
-2. **La seguridad empieza en el motor:** Entendí que la seguridad no es un middleware en el backend, sino una política estricta de mínimo privilegio en el motor de base de datos, con roles bien segmentados, permisos a nivel de columna y funciones `SECURITY DEFINER` con search-paths protegidos.
-3. **Un backup no probado es un backup inexistente:** La experiencia de la Unidad 6 me enseñó que la continuidad del negocio depende de poder restaurar contra reloj. Lograr un RTO de 4.84 segundos y un RPO de 1.70 minutos me dio la tranquilidad de que el plan de contingencia es real y medible.
-4. **La arquitectura políglota es complementaria, no competitiva:** Comprendí que no existe el motor perfecto para todo: PostgreSQL brilla en la consistencia transaccional y la integridad referencial; MongoDB destaca en la velocidad de lectura de documentos desnormalizados para e-commerce; y SQLite es el rey indiscutido del borde embebido para dispositivos móviles fuera de línea.
-5. **Criterio profesional frente a la Inteligencia Artificial:** La IA es una herramienta fenomenal para acelerar tareas repetitivas, pero carece de la visión de conjunto y del criterio de seguridad que exige un sistema en producción. Como futuro técnico en programación, mi mayor valor no está en escribir código rápido, sino en saber auditarlo, entender cómo impacta en el hardware y en el negocio, y tener los fundamentos técnicos para defender cada decisión en la práctica.
+Me llevo aprendizajes concretos que voy a aplicar durante toda mi carrera profesional:
+* **Entender los planes del motor:** No basta con que una consulta devuelva lo que pedís; hay que mirar el `EXPLAIN ANALYZE`, ver qué tipo de scan está haciendo y evaluar si conviene un índice parcial, una desnormalización controlada con triggers o una vista materializada.
+* **Seguridad por diseño:** El principio de mínimo privilegio no es opcional. Las aplicaciones no deben tener superpoderes en la base de datos; las operaciones sensibles deben aislarse en funciones `SECURITY DEFINER` blindadas contra inyecciones de path.
+* **Cultura de contingencia:** Un backup que nunca se restauró es una ilusión. Haber medido un RTO de 4.84 segundos cronometrado con PowerShell me dio la certeza de que el sistema puede levantarse de las cenizas ante un desastre.
+* **El valor de la arquitectura políglota:** No hay que casarse con una sola tecnología. PostgreSQL para la consistencia transaccional y la auditoría fiscal, MongoDB para lecturas desnormalizadas masivas a milisegundos, y SQLite para el borde móvil desconectado forman un ecosistema indestructible si se respetan los límites de autoridad de cada motor.
+* **Criterio propio ante la Inteligencia Artificial:** La IA es un copiloto espectacular para ahorrar tiempo y tipear menos, pero el piloto soy yo. El verdadero valor de un técnico superior en programación radica en tener el conocimiento teórico y práctico para auditar cada sugerencia, entender los bloqueos en el hardware y defender con orgullo y fundamento cada decisión tomada en la defensa oral.
